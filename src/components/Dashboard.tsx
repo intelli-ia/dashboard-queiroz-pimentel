@@ -356,7 +356,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                                 <Tooltip
                                     contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '8px' }}
                                     labelFormatter={(val) => format(parseISO(val), 'dd/MM/yyyy')}
-                                    formatter={(val: number | undefined) => [formatCurrency(val || 0), 'Custo']}
+                                    formatter={(value) => [formatCurrency(Number(value) || 0), 'Custo']}
                                 />
                                 <Area
                                     type="monotone"
