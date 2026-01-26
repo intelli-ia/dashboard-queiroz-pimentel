@@ -1,0 +1,29 @@
+{
+    "typescript.tsserver.maxTsServerMemory": 4096,
+    "typescript.tsserver.experimental.enableProjectDiagnostics": false,
+    "typescript.preferences.includePackageJsonAutoImports": "off",
+    "typescript.disableAutomaticTypeAcquisition": true,
+    "typescript.tsserver.enableTracing": false,
+    "typescript.tsserver.log": "off",
+    "typescript.surveys.enabled": false,
+    "javascript.validate.enable": false,
+    "files.watcherExclude": {
+        "**/.git/**": true,
+        "**/node_modules/**": true,
+        "**/.next/**": true,
+        "**/dist/**": true,
+        "**/out/**": true
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/.next": true,
+        "**/dist": true,
+        "package-lock.json": true
+    },
+    "files.exclude": {
+        "**/.git": true,
+        "**/.DS_Store": true,
+        "**/node_modules": false,
+        "**/.next": false
+    }
+}

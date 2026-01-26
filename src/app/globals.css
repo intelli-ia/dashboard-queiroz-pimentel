@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #ffffff;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #1f2937;
+  --secondary-foreground: #f3f4f6;
+  --accent: #6366f1;
+  --accent-foreground: #ffffff;
+  --muted: #111827;
+  --muted-foreground: #9ca3af;
+  --card: #111827;
+  --card-foreground: #ffffff;
+  --border: #374151;
+  --input: #1f2937;
+  --ring: #3b82f6;
+  --radius: 0.75rem;
+}
+
+@theme {
+  --color-background-app: var(--background);
+  --color-foreground-app: var(--foreground);
+  --color-primary-app: var(--primary);
+  --color-secondary-app: var(--secondary);
+  --color-accent-app: var(--accent);
+  --color-muted-app: var(--muted);
+  --color-card-app: var(--card);
+  --color-border-app: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.glass {
+  background: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.card-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.card-shine::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.card-shine:hover::after {
+  opacity: 1;
+}
