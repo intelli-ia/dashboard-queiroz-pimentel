@@ -1,18 +1,16 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
     BarChart3,
     TrendingUp,
     Users,
     LayoutGrid,
-    Calendar,
     DollarSign,
     ArrowUpRight,
     ArrowDownRight,
     Filter,
-    RefreshCcw,
-    Search
+    RefreshCcw
 } from 'lucide-react'
 import {
     AreaChart,
@@ -30,7 +28,8 @@ import {
 } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
-import { format, subDays, startOfMonth, endOfMonth, parseISO } from 'date-fns'
+import { format, subDays, parseISO } from 'date-fns'
+import type { PageProps, Department, FinancialTransaction, ChartDataPoint, DepartmentChart, CategoryChart, StackedChartData, KPICardProps, CustomTooltipProps, TooltipEntry } from '@/types'
 import { ptBR } from 'date-fns/locale'
 
 const formatCurrency = (value: number) => {
@@ -50,40 +49,31 @@ interface DashboardData {
     totalCost: number
     itemCount: number
     avgTicket: number
-    trendData: any[]
-    deptData: any[]
-    catData: any[]
-    stackedData: any[]
+    trendData: ChartDataPoint[]
+    deptData: DepartmentChart[]
+    catData: CategoryChart[]
+    stackedData: StackedChartData[]
     allCategories: string[]
-    recentItems: any[]
+    recentItems: FinancialTransaction[]
 }
 
-export default function Dashboard({ timeRange, setTimeRange, customDates, setCustomDates }: any) {
+export default function Dashboard({ timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
     const [data, setData] = useState<DashboardData | null>(null)
     const [loading, setLoading] = useState(true)
-    const [departments, setDepartments] = useState<any[]>([])
+    const [departments, setDepartments] = useState<Department[]>([])
     const [selectedDept, setSelectedDept] = useState('')
 
-
-    useEffect(() => {
-        fetchDepartments()
-    }, [])
-
-    useEffect(() => {
-        fetchDashboardData()
-    }, [timeRange, customDates, selectedDept])
-
-    async function fetchDepartments() {
-        const { data } = await supabase
+    const fetchDepartments = useCallback(async () => {
+        const { data: deptData } = await supabase
             .schema('financial_dashboard')
             .from('departments')
             .select('*')
             .eq('is_active', true)
             .order('name')
-        if (data) setDepartments(data)
-    }
+        if (deptData) setDepartments(deptData)
+    }, [])
 
-    async function fetchDashboardData() {
+    const fetchDashboardData = useCallback(async () => {
         setLoading(true)
         try {
             let startDate: string;
@@ -112,7 +102,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                 query = query.eq('department_id', selectedDept)
             }
 
-            const items = await fetchAll<any>(query.order('transaction_date', { ascending: false }))
+            const items = await fetchAll<FinancialTransaction>(query.order('transaction_date', { ascending: false }))
 
             if (items) {
                 // Calculate Totals
@@ -194,7 +184,15 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
         } finally {
             setLoading(false)
         }
-    }
+    }, [timeRange, customDates, selectedDept])
+
+    useEffect(() => {
+        fetchDepartments()
+    }, [fetchDepartments])
+
+    useEffect(() => {
+        fetchDashboardData()
+    }, [fetchDashboardData])
 
     const COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef']
 
@@ -391,7 +389,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                                     ))}
                                 </Pie>
                                 <Tooltip
-                                    content={({ active, payload }: any) => {
+                                    content={({ active, payload }: CustomTooltipProps) => {
                                         if (active && payload && payload.length) {
                                             return (
                                                 <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl shadow-2xl backdrop-blur-md">
@@ -451,7 +449,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                                 />
                                 <Tooltip
                                     contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '8px' }}
-                                    formatter={(value: any) => [formatCurrency(Number(value)), 'Custo']}
+                                    formatter={(value: number | string) => [formatCurrency(Number(value)), 'Custo']}
                                     cursor={false}
                                 />
                                 <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={35} />
@@ -521,16 +519,16 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
     )
 }
 
-function CustomStackedTooltip({ active, payload, label }: any) {
+function CustomStackedTooltip({ active, payload, label }: CustomTooltipProps) {
     if (active && payload && payload.length) {
-        const total = payload.reduce((sum: number, entry: any) => sum + (Number(entry.value) || 0), 0);
+        const total = payload.reduce((sum: number, entry: TooltipEntry) => sum + (Number(entry.value) || 0), 0);
         const filteredItems = payload
-            .filter((p: any) => p.value > 0)
-            .sort((a: any, b: any) => b.value - a.value);
+            .filter((p: TooltipEntry) => p.value > 0)
+            .sort((a: TooltipEntry, b: TooltipEntry) => b.value - a.value);
 
         // Divide items into columns of 10
         const itemsPerColumn = 10;
-        const columns: any[][] = [];
+        const columns: TooltipEntry[][] = [];
         for (let i = 0; i < filteredItems.length; i += itemsPerColumn) {
             columns.push(filteredItems.slice(i, i + itemsPerColumn));
         }
@@ -541,7 +539,7 @@ function CustomStackedTooltip({ active, payload, label }: any) {
                 <div className="flex gap-4">
                     {columns.map((column, colIndex) => (
                         <div key={colIndex} className="space-y-1.5 min-w-[200px]">
-                            {column.map((entry: any) => (
+                            {column.map((entry: TooltipEntry) => (
                                 <div key={entry.name} className="flex items-center justify-between text-xs gap-3">
                                     <div className="flex items-center gap-1.5">
                                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.fill }} />
@@ -563,7 +561,7 @@ function CustomStackedTooltip({ active, payload, label }: any) {
     return null;
 }
 
-function KPICard({ title, value, icon, trend, isPositive, isCurrency = false }: any) {
+function KPICard({ title, value, icon, trend, isPositive, isCurrency = false }: KPICardProps) {
     return (
         <div className="glass p-6 rounded-2xl card-shine group">
             <div className="flex items-center justify-between mb-4">

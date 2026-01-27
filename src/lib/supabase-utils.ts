@@ -2,6 +2,7 @@
  * Utility to fetch all records from a Supabase query by iterating through pages.
  * Supabase/PostgREST typically limits results to 1000 per request.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchAll<T>(queryBuilder: any): Promise<T[]> {
     let allData: T[] = [];
     let page = 0;

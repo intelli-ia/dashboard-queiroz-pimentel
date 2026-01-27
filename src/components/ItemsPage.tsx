@@ -1,23 +1,20 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
     Search,
     Filter,
-    ArrowLeft,
     ChevronDown,
     Calendar,
-    DollarSign,
     Package,
     Tag,
-    History,
     RefreshCcw,
     X
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
+import type { PageProps, FinancialTransaction, Department, Category, AggregatedItem, SortConfig } from '@/types'
 
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -28,12 +25,12 @@ const formatCurrency = (value: number) => {
     }).format(value);
 }
 
-export default function ItemsPage({ timeRange, setTimeRange, customDates, setCustomDates }: any) {
-    const [items, setItems] = useState<any[]>([])
+export default function ItemsPage({ timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
+    const [items, setItems] = useState<AggregatedItem[]>([])
     const [loading, setLoading] = useState(true)
     const [distinctProducts, setDistinctProducts] = useState<string[]>([])
-    const [categories, setCategories] = useState<any[]>([])
-    const [departments, setDepartments] = useState<any[]>([])
+    const [categories, setCategories] = useState<Category[]>([])
+    const [departments, setDepartments] = useState<Department[]>([])
 
     // Filters
     const [productSearchTerm, setProductSearchTerm] = useState('')
@@ -43,23 +40,14 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
     const [customSearch, setCustomSearch] = useState('')
 
     // Sort State
-    const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({
+    const [sortConfig, setSortConfig] = useState<SortConfig>({
         key: 'total_value',
         direction: 'desc'
     })
 
     const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false)
 
-
-    useEffect(() => {
-        fetchInitialData()
-    }, [])
-
-    useEffect(() => {
-        fetchFilteredData()
-    }, [selectedProduct, selectedCategory, selectedDepartment, customSearch, timeRange, customDates])
-
-    async function fetchInitialData() {
+    const fetchInitialData = useCallback(async () => {
         try {
             // Fetch distinct product names
             const { data: products } = await supabase
@@ -95,9 +83,9 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
         } catch (err) {
             console.error('Error fetching initial data:', err)
         }
-    }
+    }, [])
 
-    async function fetchFilteredData() {
+    const fetchFilteredData = useCallback(async () => {
         setLoading(true)
         try {
             let startDate: string;
@@ -136,11 +124,11 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                 query = query.eq('department_id', selectedDepartment)
             }
 
-            const data = await fetchAll<any>(query.order('transaction_date', { ascending: false }))
+            const data = await fetchAll<FinancialTransaction>(query.order('transaction_date', { ascending: false }))
 
             // Aggregate data by Product + Department
             if (data) {
-                const aggregated = data.reduce((acc: any[], item: any) => {
+                const aggregated = data.reduce((acc: AggregatedItem[], item: FinancialTransaction) => {
                     const key = `${item.transaction_name || 'Sem descrição'}_${item.department_id || 'no_dept'}`
                     const existing = acc.find(a => a.key === key)
 
@@ -171,18 +159,18 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                 }, [])
 
                 // Sort by total value descending
-                let sortedData = [...aggregated]
+                const sortedData = [...aggregated]
                 const { key, direction } = sortConfig
 
                 sortedData.sort((a, b) => {
-                    let aValue = a[key]
-                    let bValue = b[key]
+                    const aValue = a[key as keyof AggregatedItem]
+                    const bValue = b[key as keyof AggregatedItem]
 
-                    if (typeof aValue === 'string') aValue = aValue.toLowerCase()
-                    if (typeof bValue === 'string') bValue = bValue.toLowerCase()
+                    const aStr = typeof aValue === 'string' ? aValue.toLowerCase() : aValue
+                    const bStr = typeof bValue === 'string' ? bValue.toLowerCase() : bValue
 
-                    if (aValue < bValue) return direction === 'asc' ? -1 : 1
-                    if (aValue > bValue) return direction === 'asc' ? 1 : -1
+                    if (aStr < bStr) return direction === 'asc' ? -1 : 1
+                    if (aStr > bStr) return direction === 'asc' ? 1 : -1
                     return 0
                 })
 
@@ -195,7 +183,15 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
         } finally {
             setLoading(false)
         }
-    }
+    }, [selectedProduct, selectedCategory, selectedDepartment, customSearch, timeRange, customDates, sortConfig])
+
+    useEffect(() => {
+        fetchInitialData()
+    }, [fetchInitialData])
+
+    useEffect(() => {
+        fetchFilteredData()
+    }, [fetchFilteredData])
 
     const handleSort = (key: string) => {
         setSortConfig(prev => ({
@@ -208,18 +204,19 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
         // Re-sort current items when sortConfig changes
         if (items.length > 0) {
             const sorted = [...items].sort((a, b) => {
-                let aValue = a[sortConfig.key]
-                let bValue = b[sortConfig.key]
+                const aValue = a[sortConfig.key as keyof AggregatedItem]
+                const bValue = b[sortConfig.key as keyof AggregatedItem]
 
-                if (typeof aValue === 'string') aValue = aValue.toLowerCase()
-                if (typeof bValue === 'string') bValue = bValue.toLowerCase()
+                const aStr = typeof aValue === 'string' ? aValue.toLowerCase() : aValue
+                const bStr = typeof bValue === 'string' ? bValue.toLowerCase() : bValue
 
-                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1
-                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1
+                if (aStr < bStr) return sortConfig.direction === 'asc' ? -1 : 1
+                if (aStr > bStr) return sortConfig.direction === 'asc' ? 1 : -1
                 return 0
             })
             setItems(sorted)
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortConfig])
 
     const filteredDropdownProducts = distinctProducts.filter(p =>

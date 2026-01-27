@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
     Search,
     Calendar,
@@ -13,6 +13,7 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
+import type { PageProps, FinancialTransaction } from '@/types'
 
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -23,18 +24,17 @@ const formatCurrency = (value: number) => {
     }).format(value);
 }
 
-export default function SalariesPage({ timeRange, setTimeRange, customDates, setCustomDates }: any) {
+export default function SalariesPage({ timeRange: _timeRange, setTimeRange: _setTimeRange, customDates: _customDates, setCustomDates: _setCustomDates }: PageProps) {
+    // Note: timeRange, setTimeRange, customDates, setCustomDates are available but not used in this component
+    void _timeRange; void _setTimeRange; void _customDates; void _setCustomDates;
+
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedMonth, setSelectedMonth] = useState('')
-    const [salaries, setSalaries] = useState<any[]>([])
+    const [salaries, setSalaries] = useState<FinancialTransaction[]>([])
     const [loading, setLoading] = useState(true)
     const [availableMonths, setAvailableMonths] = useState<string[]>([])
 
-    useEffect(() => {
-        fetchSalaries()
-    }, [])
-
-    async function fetchSalaries() {
+    const fetchSalaries = useCallback(async () => {
         setLoading(true)
         try {
             // Fetch Salaries containing "PAGAMENTO_PESSOAL"
@@ -47,7 +47,7 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
                 `)
                 .ilike('transaction_name', '%PAGAMENTO_PESSOAL%')
 
-            const data = await fetchAll<any>(query.order('transaction_date', { ascending: false }))
+            const data = await fetchAll<FinancialTransaction>(query.order('transaction_date', { ascending: false }))
 
             if (data) {
                 setSalaries(data)
@@ -59,8 +59,8 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
                 }))).filter(Boolean) as string[]
 
                 setAvailableMonths(months)
-                if (months.length > 0 && !selectedMonth) {
-                    setSelectedMonth(months[0])
+                if (months.length > 0) {
+                    setSelectedMonth(prev => prev || months[0])
                 }
             }
         } catch (err) {
@@ -68,7 +68,11 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
         } finally {
             setLoading(false)
         }
-    }
+    }, [])
+
+    useEffect(() => {
+        fetchSalaries()
+    }, [fetchSalaries])
 
     // Filter logic
     const filteredSalaries = salaries.filter(item => {
@@ -223,7 +227,7 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
                             ) : (
                                 <tr>
                                     <td colSpan={5} className="px-6 py-20 text-center text-muted-foreground font-medium">
-                                        Nenhum registro encontrado com o termo "PAGAMENTO_PESSOAL".
+                                        Nenhum registro encontrado com o termo &quot;PAGAMENTO_PESSOAL&quot;.
                                     </td>
                                 </tr>
                             )}

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
     Search,
     Calendar,
@@ -12,6 +12,7 @@ import {
 import { format, subDays, parseISO } from 'date-fns'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
+import type { PageProps, FinancialTransaction } from '@/types'
 
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -22,16 +23,15 @@ const formatCurrency = (value: number) => {
     }).format(value);
 }
 
-export default function ServicesPage({ timeRange, setTimeRange, customDates, setCustomDates }: any) {
+export default function ServicesPage({ timeRange, setTimeRange, customDates: _customDates, setCustomDates: _setCustomDates }: PageProps) {
+    // Note: customDates and setCustomDates are available but not used in this component
+    void _customDates; void _setCustomDates;
+
     const [searchTerm, setSearchTerm] = useState('')
-    const [services, setServices] = useState<any[]>([])
+    const [services, setServices] = useState<FinancialTransaction[]>([])
     const [loading, setLoading] = useState(true)
 
-    useEffect(() => {
-        fetchServices()
-    }, [timeRange])
-
-    async function fetchServices() {
+    const fetchServices = useCallback(async () => {
         setLoading(true)
         try {
             const startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
@@ -48,14 +48,18 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates, set
                 .eq('categories.category_type', 'SRV')
                 .gte('transaction_date', startDate)
 
-            const data = await fetchAll<any>(query.order('transaction_date', { ascending: false }))
+            const data = await fetchAll<FinancialTransaction>(query.order('transaction_date', { ascending: false }))
             if (data) setServices(data)
         } catch (err) {
             console.error('Error fetching services:', err)
         } finally {
             setLoading(false)
         }
-    }
+    }, [timeRange])
+
+    useEffect(() => {
+        fetchServices()
+    }, [fetchServices])
 
     const filteredServices = services.filter(service =>
         (service.transaction_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
