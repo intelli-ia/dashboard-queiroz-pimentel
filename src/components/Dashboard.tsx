@@ -24,7 +24,8 @@ import {
     Bar,
     PieChart,
     Pie,
-    Cell
+    Cell,
+    LabelList
 } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
@@ -478,7 +479,14 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                                     formatter={(value: number | string) => [formatCurrency(Number(value)), 'Custo']}
                                     cursor={false}
                                 />
-                                <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={35} />
+                                <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={35}>
+                                    <LabelList
+                                        dataKey="value"
+                                        position="right"
+                                        formatter={(value: number) => formatCurrency(value)}
+                                        style={{ fill: '#fff', fontSize: 11, fontWeight: 500 }}
+                                    />
+                                </Bar>
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
