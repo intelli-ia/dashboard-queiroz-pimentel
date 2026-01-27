@@ -59,6 +59,7 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates, set
                     categories!inner (category_code, category_description, category_type)
                 `)
                 .eq('categories.category_type', 'SRV')
+                .not('transaction_name', 'ilike', '%COMBUSTIVEL%')
                 .gte('transaction_date', startDate)
                 .lte('transaction_date', endDate)
 
