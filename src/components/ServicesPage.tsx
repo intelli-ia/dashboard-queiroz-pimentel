@@ -23,10 +23,7 @@ const formatCurrency = (value: number) => {
     }).format(value);
 }
 
-export default function ServicesPage({ timeRange, setTimeRange, customDates: _customDates, setCustomDates: _setCustomDates }: PageProps) {
-    // Note: customDates and setCustomDates are available but not used in this component
-    void _customDates; void _setCustomDates;
-
+export default function ServicesPage({ timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
     const [searchTerm, setSearchTerm] = useState('')
     const [services, setServices] = useState<FinancialTransaction[]>([])
     const [loading, setLoading] = useState(true)
@@ -34,7 +31,15 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates: _cu
     const fetchServices = useCallback(async () => {
         setLoading(true)
         try {
-            const startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
+            let startDate: string
+            let endDate: string = format(new Date(), 'yyyy-MM-dd')
+
+            if (timeRange === 'custom') {
+                startDate = customDates.start
+                endDate = customDates.end
+            } else {
+                startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
+            }
 
             // Fetch Services (Category Type = SRV)
             const query = supabase
@@ -47,6 +52,7 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates: _cu
                 `)
                 .eq('categories.category_type', 'SRV')
                 .gte('transaction_date', startDate)
+                .lte('transaction_date', endDate)
 
             const data = await fetchAll<FinancialTransaction>(query.order('transaction_date', { ascending: false }))
             if (data) setServices(data)
@@ -55,7 +61,7 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates: _cu
         } finally {
             setLoading(false)
         }
-    }, [timeRange])
+    }, [timeRange, customDates])
 
     useEffect(() => {
         fetchServices()
@@ -150,9 +156,42 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates: _cu
                                     {range}D
                                 </button>
                             ))}
+                            <button
+                                onClick={() => setTimeRange('custom')}
+                                className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'custom'
+                                    ? 'bg-primary-app text-white shadow-lg'
+                                    : 'text-muted-foreground hover:text-white'
+                                    }`}
+                            >
+                                Pers.
+                            </button>
                         </div>
                     </div>
                 </div>
+
+                {/* Custom Date Picker */}
+                {timeRange === 'custom' && (
+                    <div className="pt-4 border-t border-white/5 flex flex-wrap items-center gap-4 animate-in slide-in-from-top-2 duration-300">
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm text-muted-foreground">De:</label>
+                            <input
+                                type="date"
+                                value={customDates.start}
+                                onChange={(e) => setCustomDates({ ...customDates, start: e.target.value })}
+                                className="bg-muted-app border border-border-app rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-app outline-none appearance-none invert hue-rotate-180 brightness-90"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm text-muted-foreground">Até:</label>
+                            <input
+                                type="date"
+                                value={customDates.end}
+                                onChange={(e) => setCustomDates({ ...customDates, end: e.target.value })}
+                                className="bg-muted-app border border-border-app rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-app outline-none appearance-none invert hue-rotate-180 brightness-90"
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Table */}

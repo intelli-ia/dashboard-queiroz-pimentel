@@ -9,7 +9,7 @@ import {
     Briefcase,
     RefreshCcw
 } from 'lucide-react'
-import { format, parseISO } from 'date-fns'
+import { format, subDays, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
@@ -24,19 +24,24 @@ const formatCurrency = (value: number) => {
     }).format(value);
 }
 
-export default function SalariesPage({ timeRange: _timeRange, setTimeRange: _setTimeRange, customDates: _customDates, setCustomDates: _setCustomDates }: PageProps) {
-    // Note: timeRange, setTimeRange, customDates, setCustomDates are available but not used in this component
-    void _timeRange; void _setTimeRange; void _customDates; void _setCustomDates;
-
+export default function SalariesPage({ timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
     const [searchTerm, setSearchTerm] = useState('')
-    const [selectedMonth, setSelectedMonth] = useState('')
     const [salaries, setSalaries] = useState<FinancialTransaction[]>([])
     const [loading, setLoading] = useState(true)
-    const [availableMonths, setAvailableMonths] = useState<string[]>([])
 
     const fetchSalaries = useCallback(async () => {
         setLoading(true)
         try {
+            let startDate: string
+            let endDate: string = format(new Date(), 'yyyy-MM-dd')
+
+            if (timeRange === 'custom') {
+                startDate = customDates.start
+                endDate = customDates.end
+            } else {
+                startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
+            }
+
             // Fetch Salaries containing "PAGAMENTO_PESSOAL"
             const query = supabase
                 .schema('financial_dashboard')
@@ -46,29 +51,20 @@ export default function SalariesPage({ timeRange: _timeRange, setTimeRange: _set
                     departments (name)
                 `)
                 .ilike('transaction_name', '%PAGAMENTO_PESSOAL%')
+                .gte('transaction_date', startDate)
+                .lte('transaction_date', endDate)
 
             const data = await fetchAll<FinancialTransaction>(query.order('transaction_date', { ascending: false }))
 
             if (data) {
                 setSalaries(data)
-
-                // Extract unique months for filter
-                const months = Array.from(new Set(data.map(item => {
-                    if (!item.transaction_date) return null
-                    return format(parseISO(item.transaction_date), 'MMMM/yyyy', { locale: ptBR })
-                }))).filter(Boolean) as string[]
-
-                setAvailableMonths(months)
-                if (months.length > 0) {
-                    setSelectedMonth(prev => prev || months[0])
-                }
             }
         } catch (err) {
             console.error('Error fetching salaries:', err)
         } finally {
             setLoading(false)
         }
-    }, [])
+    }, [timeRange, customDates])
 
     useEffect(() => {
         fetchSalaries()
@@ -76,15 +72,11 @@ export default function SalariesPage({ timeRange: _timeRange, setTimeRange: _set
 
     // Filter logic
     const filteredSalaries = salaries.filter(item => {
-        if (!item.transaction_date) return false
-        const monthYear = format(parseISO(item.transaction_date), 'MMMM/yyyy', { locale: ptBR })
-        const matchesMonth = selectedMonth ? monthYear === selectedMonth : true
-
         const matchesSearch = searchTerm === '' ||
             (item.transaction_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
             (item.departments?.name?.toLowerCase() || '').includes(searchTerm.toLowerCase())
 
-        return matchesMonth && matchesSearch
+        return matchesSearch
     })
 
     const totalFolha = filteredSalaries.reduce((acc, curr) => acc + (Number(curr.total_value) || 0), 0)
@@ -108,9 +100,7 @@ export default function SalariesPage({ timeRange: _timeRange, setTimeRange: _set
                         <span className="font-medium">Total Folha</span>
                     </div>
                     <div className="text-2xl font-bold">{formatCurrency(totalFolha)}</div>
-                    <div className="text-xs text-muted-foreground capitalize">
-                        {selectedMonth ? `Referência: ${selectedMonth}` : 'Total Geral'}
-                    </div>
+                    <div className="text-xs text-muted-foreground">No período selecionado</div>
                 </div>
                 <div className="glass p-6 rounded-2xl space-y-2">
                     <div className="flex items-center gap-2 text-indigo-400">
@@ -147,36 +137,60 @@ export default function SalariesPage({ timeRange: _timeRange, setTimeRange: _set
                         />
                     </div>
 
-                    {/* Month Select */}
+                    {/* Date Presets */}
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                            <Calendar className="w-4 h-4" /> Mês de Competência
+                            <Calendar className="w-4 h-4" /> Período
                         </label>
-                        <div className="flex flex-wrap gap-2 overflow-x-auto pb-2">
-                            <button
-                                onClick={() => setSelectedMonth('')}
-                                className={`px-4 py-2 text-sm rounded-md transition-all whitespace-nowrap ${selectedMonth === ''
-                                    ? 'bg-primary-app text-white shadow-lg'
-                                    : 'bg-card-app text-muted-foreground hover:text-white border border-border-app'
-                                    }`}
-                            >
-                                Todos
-                            </button>
-                            {availableMonths.map((month) => (
+                        <div className="flex bg-card-app p-1 rounded-lg border border-border-app h-[42px]">
+                            {['7', '30', '90', '360'].map((range) => (
                                 <button
-                                    key={month}
-                                    onClick={() => setSelectedMonth(month)}
-                                    className={`px-4 py-2 text-sm rounded-md transition-all whitespace-nowrap capitalize ${selectedMonth === month
+                                    key={range}
+                                    onClick={() => setTimeRange(range)}
+                                    className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === range
                                         ? 'bg-primary-app text-white shadow-lg'
-                                        : 'bg-card-app text-muted-foreground hover:text-white border border-border-app'
+                                        : 'text-muted-foreground hover:text-white'
                                         }`}
                                 >
-                                    {month}
+                                    {range}D
                                 </button>
                             ))}
+                            <button
+                                onClick={() => setTimeRange('custom')}
+                                className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'custom'
+                                    ? 'bg-primary-app text-white shadow-lg'
+                                    : 'text-muted-foreground hover:text-white'
+                                    }`}
+                            >
+                                Pers.
+                            </button>
                         </div>
                     </div>
                 </div>
+
+                {/* Custom Date Picker */}
+                {timeRange === 'custom' && (
+                    <div className="pt-4 border-t border-white/5 flex flex-wrap items-center gap-4 animate-in slide-in-from-top-2 duration-300">
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm text-muted-foreground">De:</label>
+                            <input
+                                type="date"
+                                value={customDates.start}
+                                onChange={(e) => setCustomDates({ ...customDates, start: e.target.value })}
+                                className="bg-muted-app border border-border-app rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-app outline-none appearance-none invert hue-rotate-180 brightness-90"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm text-muted-foreground">Até:</label>
+                            <input
+                                type="date"
+                                value={customDates.end}
+                                onChange={(e) => setCustomDates({ ...customDates, end: e.target.value })}
+                                className="bg-muted-app border border-border-app rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-app outline-none appearance-none invert hue-rotate-180 brightness-90"
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Table */}
