@@ -144,18 +144,7 @@ export default function Home() {
           </button>
         </nav>
 
-        <div className="pt-4 border-t border-border-app mt-auto space-y-2">
-          <div className={`flex items-center gap-3 px-2 py-2 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
-            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-xs font-bold text-indigo-400 shrink-0">
-              QP
-            </div>
-            {!isSidebarCollapsed && (
-              <div className="hidden md:block">
-                <p className="text-sm font-medium">Admin</p>
-                <p className="text-xs text-muted-foreground">Queiroz Pimentel</p>
-              </div>
-            )}
-          </div>
+        <div className="pt-4 border-t border-border-app mt-auto">
           <button
             onClick={handleLogout}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-red-400 hover:bg-red-500/10 transition-all ${isSidebarCollapsed ? 'justify-center' : ''}`}
