@@ -11,6 +11,7 @@ import {
     RefreshCcw,
     X
 } from 'lucide-react'
+import { useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
@@ -46,6 +47,35 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
     })
 
     const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false)
+    const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false)
+    const [isDepartmentDropdownOpen, setIsDepartmentDropdownOpen] = useState(false)
+
+    // Refs for outside click detection
+    const productDropdownRef = useRef<HTMLDivElement>(null)
+    const categoryDropdownRef = useRef<HTMLDivElement>(null)
+    const departmentDropdownRef = useRef<HTMLDivElement>(null)
+
+    // Helper to close all dropdowns
+    const closeAllDropdowns = useCallback(() => {
+        setIsProductDropdownOpen(false)
+        setIsCategoryDropdownOpen(false)
+        setIsDepartmentDropdownOpen(false)
+    }, [])
+
+    // Click outside listener
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                productDropdownRef.current && !productDropdownRef.current.contains(event.target as Node) &&
+                categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node) &&
+                departmentDropdownRef.current && !departmentDropdownRef.current.contains(event.target as Node)
+            ) {
+                closeAllDropdowns()
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [closeAllDropdowns])
 
     const fetchInitialData = useCallback(async () => {
         try {
@@ -245,7 +275,7 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
             </div>
 
             {/* Advanced Filter Bar */}
-            <div className="glass p-6 rounded-2xl space-y-6">
+            <div className="glass p-6 rounded-2xl space-y-6 relative z-30">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
                     {/* Custom Search Field */}
                     <div className="space-y-2">
@@ -272,14 +302,18 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                     </div>
 
                     {/* Product Dropdown Select */}
-                    <div className="space-y-2 relative">
+                    <div className="space-y-2 relative" ref={productDropdownRef}>
                         <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                             <Package className="w-4 h-4" /> Item Específico
                         </label>
                         <div className="relative">
                             <button
-                                onClick={() => setIsProductDropdownOpen(!isProductDropdownOpen)}
-                                className="w-full bg-muted-app border border-border-app rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-app transition-all text-left flex items-center justify-between"
+                                onClick={() => {
+                                    const newState = !isProductDropdownOpen
+                                    closeAllDropdowns()
+                                    setIsProductDropdownOpen(newState)
+                                }}
+                                className="w-full bg-muted-app border border-border-app rounded-xl px-4 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-primary-app transition-all text-left flex items-center justify-between"
                             >
                                 <span className={selectedProduct ? 'text-foreground-app' : 'text-muted-foreground'}>
                                     {selectedProduct || 'Selecione um item...'}
@@ -308,7 +342,7 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                         placeholder="Buscar item..."
                                         value={productSearchTerm}
                                         onChange={(e) => setProductSearchTerm(e.target.value)}
-                                        className="w-full bg-muted-app border border-border-app rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-app"
+                                        className="w-full bg-muted-app border border-border-app rounded-lg px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-primary-app"
                                         autoFocus
                                     />
                                 </div>
@@ -322,13 +356,13 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                                     setIsProductDropdownOpen(false)
                                                     setProductSearchTerm('')
                                                 }}
-                                                className="w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-sm transition-colors border-b border-white/5 last:border-0"
+                                                className="w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 last:border-0"
                                             >
                                                 {p}
                                             </button>
                                         ))
                                     ) : (
-                                        <div className="p-4 text-sm text-center text-muted-foreground">Nenhum item encontrado</div>
+                                        <div className="p-4 text-[13px] text-center text-muted-foreground">Nenhum item encontrado</div>
                                     )}
                                 </div>
                             </div>
@@ -336,46 +370,125 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                     </div>
 
                     {/* Category Select */}
-
-                    <div className="space-y-2">
+                    <div className="space-y-2 relative" ref={categoryDropdownRef}>
                         <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                             <Tag className="w-4 h-4" /> Categoria
                         </label>
-                        <div className="flex bg-card-app p-1 rounded-lg border border-border-app flex-1 min-w-[200px]">
-                            <select
-                                value={selectedCategory}
-                                onChange={(e) => setSelectedCategory(e.target.value)}
-                                className="w-full bg-transparent text-sm focus:outline-none px-2 py-1.5 text-muted-foreground"
+                        <div className="relative">
+                            <button
+                                onClick={() => {
+                                    const newState = !isCategoryDropdownOpen
+                                    closeAllDropdowns()
+                                    setIsCategoryDropdownOpen(newState)
+                                }}
+                                className="w-full bg-muted-app border border-border-app rounded-xl px-4 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-primary-app transition-all text-left flex items-center justify-between"
                             >
-                                <option value="">Todas categorias</option>
-                                {categories.map((cat) => (
-                                    <option key={cat.id} value={cat.category_code}>
-                                        {cat.category_description}
-                                    </option>
-                                ))}
-                            </select>
+                                <span className={selectedCategory ? 'text-foreground-app' : 'text-muted-foreground'}>
+                                    {selectedCategory
+                                        ? categories.find(c => c.category_code === selectedCategory)?.category_description
+                                        : 'Todas categorias'}
+                                </span>
+                                <ChevronDown className={`w-4 h-4 transition-transform ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {selectedCategory && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        setSelectedCategory('')
+                                    }}
+                                    className="absolute right-10 top-1/2 -translate-y-1/2 p-1 hover:bg-white/10 rounded-full z-10"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
+
+                        {isCategoryDropdownOpen && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-card-app border border-border-app rounded-xl shadow-2xl z-[100] max-h-60 overflow-y-auto custom-scrollbar">
+                                <button
+                                    onClick={() => {
+                                        setSelectedCategory('')
+                                        setIsCategoryDropdownOpen(false)
+                                    }}
+                                    className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 ${!selectedCategory ? 'bg-primary-app/10 text-primary-app' : ''}`}
+                                >
+                                    Todas categorias
+                                </button>
+                                {categories.map((cat) => (
+                                    <button
+                                        key={cat.id}
+                                        onClick={() => {
+                                            setSelectedCategory(cat.category_code)
+                                            setIsCategoryDropdownOpen(false)
+                                        }}
+                                        className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 last:border-0 ${selectedCategory === cat.category_code ? 'bg-primary-app/10 text-primary-app' : ''}`}
+                                    >
+                                        {cat.category_description}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Department Select */}
-                    <div className="space-y-2">
+                    <div className="space-y-2 relative" ref={departmentDropdownRef}>
                         <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                             <Filter className="w-4 h-4" /> Departamento
                         </label>
-                        <div className="flex bg-card-app p-1 rounded-lg border border-border-app flex-1 min-w-[200px]">
-                            <select
-                                value={selectedDepartment}
-                                onChange={(e) => setSelectedDepartment(e.target.value)}
-                                className="w-full bg-transparent text-sm focus:outline-none px-2 py-1.5 text-muted-foreground"
+                        <div className="relative">
+                            <button
+                                onClick={() => {
+                                    const newState = !isDepartmentDropdownOpen
+                                    closeAllDropdowns()
+                                    setIsDepartmentDropdownOpen(newState)
+                                }}
+                                className="w-full bg-muted-app border border-border-app rounded-xl px-4 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-primary-app transition-all text-left flex items-center justify-between"
                             >
-                                <option value="">Todos departamentos</option>
-                                {departments.map((dept) => (
-                                    <option key={dept.id} value={dept.omie_department_id}>
-                                        {dept.name}
-                                    </option>
-                                ))}
-                            </select>
+                                <span className={selectedDepartment ? 'text-foreground-app' : 'text-muted-foreground'}>
+                                    {selectedDepartment
+                                        ? departments.find(d => d.omie_department_id === selectedDepartment)?.name
+                                        : 'Todos departamentos'}
+                                </span>
+                                <ChevronDown className={`w-4 h-4 transition-transform ${isDepartmentDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {selectedDepartment && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        setSelectedDepartment('')
+                                    }}
+                                    className="absolute right-10 top-1/2 -translate-y-1/2 p-1 hover:bg-white/10 rounded-full z-10"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
+
+                        {isDepartmentDropdownOpen && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-card-app border border-border-app rounded-xl shadow-2xl z-[100] max-h-60 overflow-y-auto custom-scrollbar">
+                                <button
+                                    onClick={() => {
+                                        setSelectedDepartment('')
+                                        setIsDepartmentDropdownOpen(false)
+                                    }}
+                                    className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 ${!selectedDepartment ? 'bg-primary-app/10 text-primary-app' : ''}`}
+                                >
+                                    Todos departamentos
+                                </button>
+                                {departments.map((dept) => (
+                                    <button
+                                        key={dept.id}
+                                        onClick={() => {
+                                            setSelectedDepartment(dept.omie_department_id)
+                                            setIsDepartmentDropdownOpen(false)
+                                        }}
+                                        className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 last:border-0 ${selectedDepartment === dept.omie_department_id ? 'bg-primary-app/10 text-primary-app' : ''}`}
+                                    >
+                                        {dept.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Date Presets */}

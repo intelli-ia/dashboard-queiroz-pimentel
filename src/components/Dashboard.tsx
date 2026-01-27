@@ -10,8 +10,11 @@ import {
     ArrowUpRight,
     ArrowDownRight,
     Filter,
-    RefreshCcw
+    RefreshCcw,
+    ChevronDown,
+    X
 } from 'lucide-react'
+import { useRef } from 'react'
 import {
     AreaChart,
     Area,
@@ -63,6 +66,19 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
     const [loading, setLoading] = useState(true)
     const [departments, setDepartments] = useState<Department[]>([])
     const [selectedDept, setSelectedDept] = useState('')
+    const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false)
+    const deptDropdownRef = useRef<HTMLDivElement>(null)
+
+    // Click outside listener
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (deptDropdownRef.current && !deptDropdownRef.current.contains(event.target as Node)) {
+                setIsDeptDropdownOpen(false)
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [])
 
     const fetchDepartments = useCallback(async () => {
         const { data: deptData } = await supabase
@@ -228,19 +244,44 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     )}
                 </div>
                 <div className="flex items-center gap-3">
-                    <div className="flex bg-card-app p-1 rounded-lg border border-border-app">
-                        <select
-                            value={selectedDept}
-                            onChange={(e) => setSelectedDept(e.target.value)}
-                            className="bg-transparent text-sm focus:outline-none px-2 py-1.5 text-muted-foreground w-[150px] md:w-[200px]"
+                    <div className="relative group" ref={deptDropdownRef}>
+                        <button
+                            onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
+                            className="flex items-center justify-between bg-card-app border border-border-app rounded-lg px-3 py-2 text-[13px] text-muted-foreground w-[180px] md:w-[220px] transition-all hover:border-primary-app/50"
                         >
-                            <option value="">Geral (Todas Obras)</option>
-                            {departments.map((dept) => (
-                                <option key={dept.id} value={dept.omie_department_id}>
-                                    {dept.name}
-                                </option>
-                            ))}
-                        </select>
+                            <span className="truncate pr-2 text-foreground-app">
+                                {selectedDept
+                                    ? departments.find(d => d.omie_department_id === selectedDept)?.name
+                                    : 'Geral (Todas Obras)'}
+                            </span>
+                            <ChevronDown className={`w-4 h-4 transition-transform ${isDeptDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isDeptDropdownOpen && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-card-app border border-border-app rounded-xl shadow-2xl z-[100] max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-200">
+                                <button
+                                    onClick={() => {
+                                        setSelectedDept('')
+                                        setIsDeptDropdownOpen(false)
+                                    }}
+                                    className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 ${!selectedDept ? 'bg-primary-app/10 text-primary-app' : 'text-muted-foreground'}`}
+                                >
+                                    Geral (Todas Obras)
+                                </button>
+                                {departments.map((dept) => (
+                                    <button
+                                        key={dept.id}
+                                        onClick={() => {
+                                            setSelectedDept(dept.omie_department_id)
+                                            setIsDeptDropdownOpen(false)
+                                        }}
+                                        className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 last:border-0 ${selectedDept === dept.omie_department_id ? 'bg-primary-app/10 text-primary-app' : 'text-muted-foreground'}`}
+                                    >
+                                        {dept.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex bg-card-app p-1 rounded-lg border border-border-app">
