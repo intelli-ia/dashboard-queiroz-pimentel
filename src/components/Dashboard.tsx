@@ -79,9 +79,17 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
             let startDate: string;
             let endDate: string = format(new Date(), 'yyyy-MM-dd');
 
+            const currentYear = new Date().getFullYear()
+
             if (timeRange === 'custom') {
                 startDate = customDates.start;
                 endDate = customDates.end;
+            } else if (timeRange === 'lastYear') {
+                startDate = `${currentYear - 1}-01-01`;
+                endDate = `${currentYear - 1}-12-31`;
+            } else if (timeRange === 'thisYear') {
+                startDate = `${currentYear}-01-01`;
+                endDate = `${currentYear}-12-31`;
             } else {
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd');
             }
@@ -211,8 +219,8 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Custos & Gestão</h1>
-                        <p className="text-muted-foreground">Queiroz Pimentel - Dashboard Gerencial</p>
+                        <h1 className="text-3xl font-bold tracking-tight">Custos por Projetos</h1>
+                        <p className="text-muted-foreground">Dashboard Gerencial</p>
                     </div>
                     {loading && data && (
                         <RefreshCcw className="w-5 h-5 animate-spin text-primary-app/50" />
@@ -248,13 +256,31 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                             </button>
                         ))}
                         <button
+                            onClick={() => setTimeRange('lastYear')}
+                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'lastYear'
+                                ? 'bg-primary-app text-white shadow-lg'
+                                : 'text-muted-foreground hover:text-white'
+                                }`}
+                        >
+                            Ano passado
+                        </button>
+                        <button
+                            onClick={() => setTimeRange('thisYear')}
+                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'thisYear'
+                                ? 'bg-primary-app text-white shadow-lg'
+                                : 'text-muted-foreground hover:text-white'
+                                }`}
+                        >
+                            Este ano
+                        </button>
+                        <button
                             onClick={() => setTimeRange('custom')}
                             className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'custom'
                                 ? 'bg-primary-app text-white shadow-lg'
                                 : 'text-muted-foreground hover:text-white'
                                 }`}
                         >
-                            Personalizado
+                            Pers.
                         </button>
                     </div>
                     <button className="p-2.5 rounded-lg border border-border-app bg-card-app hover:bg-secondary-app transition-colors">

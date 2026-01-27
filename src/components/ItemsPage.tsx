@@ -91,9 +91,17 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
             let startDate: string;
             let endDate: string = format(new Date(), 'yyyy-MM-dd');
 
+            const currentYear = new Date().getFullYear()
+
             if (timeRange === 'custom') {
                 startDate = customDates.start;
                 endDate = customDates.end;
+            } else if (timeRange === 'lastYear') {
+                startDate = `${currentYear - 1}-01-01`;
+                endDate = `${currentYear - 1}-12-31`;
+            } else if (timeRange === 'thisYear') {
+                startDate = `${currentYear}-01-01`;
+                endDate = `${currentYear}-12-31`;
             } else {
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd');
             }
@@ -388,6 +396,24 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                     {range}D
                                 </button>
                             ))}
+                            <button
+                                onClick={() => setTimeRange('lastYear')}
+                                className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'lastYear'
+                                    ? 'bg-primary-app text-white shadow-lg'
+                                    : 'text-muted-foreground hover:text-white'
+                                    }`}
+                            >
+                                Ano passado
+                            </button>
+                            <button
+                                onClick={() => setTimeRange('thisYear')}
+                                className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'thisYear'
+                                    ? 'bg-primary-app text-white shadow-lg'
+                                    : 'text-muted-foreground hover:text-white'
+                                    }`}
+                            >
+                                Este ano
+                            </button>
                             <button
                                 onClick={() => setTimeRange('custom')}
                                 className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'custom'
