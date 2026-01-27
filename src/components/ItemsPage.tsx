@@ -379,7 +379,7 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                     </div>
 
                     {/* Date Presets */}
-                    <div className="space-y-2">
+                    <div className="space-y-2 lg:col-span-2">
                         <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                             <Calendar className="w-4 h-4" /> Período
                         </label>
