@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
     Search,
     Filter,
@@ -12,6 +12,16 @@ import {
     X
 } from 'lucide-react'
 import { useRef } from 'react'
+import {
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+    Cell
+} from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
@@ -260,6 +270,22 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
     const filteredDropdownProducts = distinctProducts.filter(p =>
         p.toLowerCase().includes(productSearchTerm.toLowerCase())
     )
+
+    // Aggregate data by category for the chart
+    const categoryChartData = useMemo(() => {
+        const categoryTotals = items.reduce((acc, item) => {
+            const category = item.category_description || 'Outros'
+            acc[category] = (acc[category] || 0) + item.total_value
+            return acc
+        }, {} as Record<string, number>)
+
+        return Object.entries(categoryTotals)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 8) // Limit to top 8 categories
+    }, [items])
+
+    const CHART_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316']
 
     return (
         <div className="p-6 md:p-8 space-y-8 animate-in fade-in duration-700 max-w-[1600px] mx-auto">
@@ -564,6 +590,54 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                     </div>
                 )}
             </div>
+
+            {/* Category Comparison Chart */}
+            {categoryChartData.length > 0 && (
+                <div className="glass p-4 rounded-2xl">
+                    <h3 className="text-sm font-medium text-muted-foreground mb-3">Custo por Categoria</h3>
+                    <div className="h-[180px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={categoryChartData} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                                <XAxis
+                                    dataKey="name"
+                                    tick={{ fill: '#94a3b8', fontSize: 10 }}
+                                    angle={-45}
+                                    textAnchor="end"
+                                    height={60}
+                                    interval={0}
+                                />
+                                <YAxis
+                                    tick={{ fill: '#94a3b8', fontSize: 10 }}
+                                    tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                                    width={45}
+                                />
+                                <Tooltip
+                                    cursor={false}
+                                    content={({ active, payload }) => {
+                                        if (active && payload && payload.length) {
+                                            return (
+                                                <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl shadow-2xl backdrop-blur-md">
+                                                    <p className="text-white font-semibold text-sm mb-1">{payload[0].payload.name}</p>
+                                                    <p className="text-primary-app font-bold text-lg">
+                                                        {formatCurrency(payload[0].value as number)}
+                                                    </p>
+                                                </div>
+                                            )
+                                        }
+                                        return null
+                                    }}
+                                />
+                                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                                    {categoryChartData.map((_, index) => (
+                                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            )}
 
             {/* Results Counters */}
             <div className="flex items-center gap-4">
