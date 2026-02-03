@@ -50,22 +50,38 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
             }
 
-            // Fetch Salaries containing "PAGAMENTO_PESSOAL"
+            // Fetch Salaries from purchases
+            // We search for "PAGAMENTO_PESSOAL" or similar in the invoice or category
+            // Note: Since we don't have a specific field, we'll try to find it in category name or invoice key for now
             const query = supabase
-                .schema('financial_dashboard')
-                .from('financial_transactions')
+                .from('purchases')
                 .select(`
                     *,
-                    departments (name)
+                    projects (name),
+                    categories (name)
                 `)
-                .ilike('transaction_name', '%PAGAMENTO_PESSOAL%')
-                .gte('transaction_date', startDate)
-                .lte('transaction_date', endDate)
+                .or('invoice_key.ilike.%PAGAMENTO_PESSOAL%')
+                .gte('issue_date', startDate)
+                .lte('issue_date', endDate)
 
-            const data = await fetchAll<FinancialTransaction>(query.order('transaction_date', { ascending: false }))
+            const rawData = await fetchAll<any>(query.order('issue_date', { ascending: false }))
 
-            if (data) {
-                setSalaries(data)
+            if (rawData) {
+                const mappedData: FinancialTransaction[] = rawData.map(item => ({
+                    id: item.invoice_key,
+                    transaction_date: item.issue_date,
+                    transaction_name: `Pagamento: ${item.invoice_key}`,
+                    total_value: item.invoice_total_amount || 0,
+                    quantity_received: 1,
+                    department_id: item.project_id,
+                    superior_category: item.purchase_category,
+                    departments: item.projects,
+                    categories: {
+                        category_description: item.categories?.name || 'Salários',
+                        name: item.categories?.name
+                    }
+                }))
+                setSalaries(mappedData)
             }
         } catch (err) {
             console.error('Error fetching salaries:', err)

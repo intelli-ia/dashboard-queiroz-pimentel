@@ -10,11 +10,13 @@ export async function fetchAll<T>(queryBuilder: any): Promise<T[]> {
     let hasMore = true;
 
     while (hasMore) {
-        const { data, error } = await queryBuilder
+        const { data, error, status, statusText } = await queryBuilder
             .range(page * pageSize, (page + 1) * pageSize - 1);
 
+        console.log('fetchAll response:', { data: data?.length || 0, error, status, statusText });
+
         if (error) {
-            console.error('Error in fetchAll:', error);
+            console.error('Error in fetchAll:', error, 'Status:', status, statusText);
             throw error;
         }
 

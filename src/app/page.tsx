@@ -2,24 +2,23 @@
 
 import { useState, useEffect } from 'react'
 import Dashboard from '@/components/Dashboard'
-import ItemsPage from '@/components/ItemsPage'
-import ServicesPage from '@/components/ServicesPage'
-import SalariesPage from '@/components/SalariesPage'
+import NFEPage from '@/components/NFEPage'
+import NFEDetailsPage from '@/components/NFEDetailsPage'
 import Login from '@/components/Login'
-import { LayoutDashboard, ReceiptText, ChevronLeft, ChevronRight, Briefcase, Banknote, LogOut } from 'lucide-react'
+import { LayoutDashboard, ReceiptText, List, ChevronLeft, ChevronRight, LogOut } from 'lucide-react'
 import Image from 'next/image'
 
 import { format, subDays } from 'date-fns'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'items' | 'services' | 'salaries'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'items' | 'nfe'>('dashboard')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Shared Filter State (must be declared before any conditional returns)
-  const [timeRange, setTimeRange] = useState('30')
+  const [timeRange, setTimeRange] = useState('360')
   const [customDates, setCustomDates] = useState({
-    start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
+    start: format(subDays(new Date(), 360), 'yyyy-MM-dd'),
     end: format(new Date(), 'yyyy-MM-dd')
   })
 
@@ -108,39 +107,27 @@ export default function Home() {
           </button>
 
           <button
+            onClick={() => setActiveTab('nfe')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'nfe'
+              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
+              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
+              }`}
+            title="NFE"
+          >
+            <ReceiptText className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">NFE</span>}
+          </button>
+
+          <button
             onClick={() => setActiveTab('items')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'items'
               ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
               : 'hover:bg-white/5 text-muted-foreground hover:text-white'
               }`}
-            title="Custos Diretos"
+            title="Detalhamento NFE"
           >
-            <ReceiptText className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Custos Diretos</span>}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('services')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'services'
-              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
-              }`}
-            title="Custos de Serviços"
-          >
-            <Briefcase className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Serviços</span>}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('salaries')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'salaries'
-              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
-              }`}
-            title="Pagamentos e Salários"
-          >
-            <Banknote className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Pagamentos</span>}
+            <List className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Detalhamento NFE</span>}
           </button>
         </nav>
 
@@ -165,22 +152,15 @@ export default function Home() {
             customDates={customDates}
             setCustomDates={setCustomDates}
           />
-        ) : activeTab === 'items' ? (
-          <ItemsPage
-            timeRange={timeRange}
-            setTimeRange={setTimeRange}
-            customDates={customDates}
-            setCustomDates={setCustomDates}
-          />
-        ) : activeTab === 'services' ? (
-          <ServicesPage
+        ) : activeTab === 'nfe' ? (
+          <NFEPage
             timeRange={timeRange}
             setTimeRange={setTimeRange}
             customDates={customDates}
             setCustomDates={setCustomDates}
           />
         ) : (
-          <SalariesPage
+          <NFEDetailsPage
             timeRange={timeRange}
             setTimeRange={setTimeRange}
             customDates={customDates}

@@ -81,13 +81,17 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
     }, [])
 
     const fetchDepartments = useCallback(async () => {
-        const { data: deptData } = await supabase
-            .schema('financial_dashboard')
-            .from('departments')
+        const { data: projData, error, status } = await supabase
+            .from('projects')
             .select('*')
-            .eq('is_active', true)
             .order('name')
-        if (deptData) setDepartments(deptData)
+        console.log('fetchProjects:', { data: projData?.length || 0, error, status })
+        if (projData) setDepartments(projData.map(p => ({
+            id: p.code,
+            name: p.name,
+            omie_department_id: p.code,
+            is_active: true
+        })))
     }, [])
 
     const fetchDashboardData = useCallback(async () => {
@@ -107,27 +111,70 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
             } else if (timeRange === 'thisYear') {
                 startDate = `${currentYear}-01-01`;
                 endDate = `${currentYear}-12-31`;
+            } else if (timeRange === '2024') {
+                startDate = '2024-01-01';
+                endDate = '2024-12-31';
+            } else if (timeRange === 'all') {
+                startDate = '2000-01-01';
+                endDate = '2099-12-31';
             } else {
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd');
             }
 
-            // Fetch financial transactions with date filter
+            // Fetch financial movements (movimentações financeiras) as the main data source
             let query = supabase
-                .schema('financial_dashboard')
-                .from('financial_transactions')
+                .from('financial_movements')
                 .select(`
-          *,
-          departments (name),
-          categories (category_description)
-        `)
-                .gte('transaction_date', startDate)
-                .lte('transaction_date', endDate)
+                    title_id,
+                    invoice_key,
+                    invoice_number,
+                    supplier_tax_id,
+                    category_id,
+                    project_id,
+                    status,
+                    is_paid,
+                    issue_date,
+                    due_date,
+                    payment_date,
+                    original_amount,
+                    paid_amount,
+                    net_amount,
+                    installment_label,
+                    projects (code, name),
+                    categories (code, description, standard_description)
+                `)
+                .gte('issue_date', startDate)
+                .lte('issue_date', endDate)
 
             if (selectedDept) {
-                query = query.eq('department_id', selectedDept)
+                query = query.eq('project_id', selectedDept)
             }
 
-            const items = await fetchAll<FinancialTransaction>(query.order('transaction_date', { ascending: false }))
+            const rawItems = await fetchAll<any>(query.order('issue_date', { ascending: false }))
+
+            console.log('Dashboard raw items (financial_movements):', rawItems)
+
+            // Map to FinancialTransaction for UI compatibility
+            // Using original_amount as the primary value (represents the financial movement)
+            const items: FinancialTransaction[] = rawItems?.map(item => ({
+                id: item.title_id,
+                transaction_date: item.payment_date || item.issue_date,
+                transaction_name: item.installment_label
+                    ? `Título: ${item.invoice_number || item.title_id} (${item.installment_label})`
+                    : `Título: ${item.invoice_number || item.title_id}`,
+                total_value: Number(item.net_amount) || Number(item.original_amount) || Number(item.paid_amount) || 0,
+                quantity_received: 1,
+                department_id: item.project_id,
+                superior_category: item.category_id,
+                supplier_name: item.supplier_name,
+                description: item.description,
+                departments: item.projects ? { name: item.projects.name } : undefined,
+                projects: item.projects ? { name: item.projects.name } : undefined,
+                categories: {
+                    category_description: item.categories?.description || item.categories?.standard_description || 'Outros',
+                    name: item.categories?.description || item.categories?.standard_description
+                }
+            })) || []
 
             if (items) {
                 // Calculate Totals
@@ -314,6 +361,24 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                                 }`}
                         >
                             Este ano
+                        </button>
+                        <button
+                            onClick={() => setTimeRange('2024')}
+                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === '2024'
+                                ? 'bg-primary-app text-white shadow-lg'
+                                : 'text-muted-foreground hover:text-white'
+                                }`}
+                        >
+                            2024
+                        </button>
+                        <button
+                            onClick={() => setTimeRange('all')}
+                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'all'
+                                ? 'bg-primary-app text-white shadow-lg'
+                                : 'text-muted-foreground hover:text-white'
+                                }`}
+                        >
+                            Tudo
                         </button>
                         <button
                             onClick={() => setTimeRange('custom')}

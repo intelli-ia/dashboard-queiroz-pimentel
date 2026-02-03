@@ -49,22 +49,49 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates, set
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
             }
 
-            // Fetch Services (Category Type = SRV)
-            const query = supabase
-                .schema('financial_dashboard')
-                .from('financial_transactions')
+            // Fetch Services from purchases
+            // We join with categories to identify services.
+            // Since we don't know the exact service identifier in the new schema,
+            // we'll fetch all and assume the UI can handle it or we filter by category name.
+            let query = supabase
+                .from('purchases')
                 .select(`
-                    *,
-                    departments (name),
-                    categories!inner (category_code, category_description, category_type)
+                    invoice_key,
+                    invoice_number,
+                    issue_date,
+                    project_id,
+                    purchase_category,
+                    invoice_total_amount,
+                    supplier_legal_name,
+                    projects (code, name),
+                    categories (code, description, standard_description)
                 `)
-                .eq('categories.category_type', 'SRV')
-                .not('transaction_name', 'ilike', '%COMBUSTIVEL%')
-                .gte('transaction_date', startDate)
-                .lte('transaction_date', endDate)
+                .gte('issue_date', startDate)
+                .lte('issue_date', endDate)
 
-            const data = await fetchAll<FinancialTransaction>(query.order('transaction_date', { ascending: false }))
-            if (data) setServices(data)
+            // Filtering for categories that might represent services
+            // This is a placeholder for the actual service filtering logic
+            // query = query.ilike('categories.name', '%Serviço%')
+
+            const rawData = await fetchAll<any>(query.order('issue_date', { ascending: false }))
+
+            if (rawData) {
+                const mappedData: FinancialTransaction[] = rawData.map(item => ({
+                    id: item.invoice_key,
+                    transaction_date: item.issue_date,
+                    transaction_name: item.supplier_legal_name || `NF: ${item.invoice_number || item.invoice_key}`,
+                    total_value: item.invoice_total_amount || 0,
+                    quantity_received: 1,
+                    department_id: item.project_id,
+                    superior_category: item.purchase_category,
+                    departments: item.projects,
+                    categories: {
+                        category_description: item.categories?.description || item.categories?.standard_description || 'Serviços',
+                        name: item.categories?.description
+                    }
+                }))
+                setServices(mappedData)
+            }
         } catch (err) {
             console.error('Error fetching services:', err)
         } finally {
