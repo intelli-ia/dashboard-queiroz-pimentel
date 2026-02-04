@@ -617,15 +617,15 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                 {/* 1. Categorias (Donut) */}
                 <div className="glass p-6 rounded-2xl space-y-6">
                     <h3 className="font-semibold text-lg">Distribuição por Categoria</h3>
-                    <div className="h-[250px]">
+                    <div className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
                                     data={data?.catData}
                                     cx="50%"
                                     cy="50%"
-                                    innerRadius={60}
-                                    outerRadius={80}
+                                    innerRadius={80}
+                                    outerRadius={110}
                                     paddingAngle={3}
                                     dataKey="value"
                                     stroke="none"
@@ -675,15 +675,15 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                 {/* 2. Tipos de Pagamento (Pie) */}
                 <div className="glass p-6 rounded-2xl space-y-6">
                     <h3 className="font-semibold text-lg">Tipos de Pagamento</h3>
-                    <div className="h-[250px]">
+                    <div className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
                                     data={data?.paymentTypeData}
                                     cx="50%"
                                     cy="50%"
-                                    innerRadius={55}
-                                    outerRadius={75}
+                                    innerRadius={80}
+                                    outerRadius={110}
                                     paddingAngle={3}
                                     dataKey="value"
                                     stroke="none"
