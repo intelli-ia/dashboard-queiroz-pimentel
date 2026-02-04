@@ -175,10 +175,10 @@ export default function Home() {
               ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
               : 'hover:bg-white/5 text-muted-foreground hover:text-white'
               }`}
-            title="Diversos"
+            title="Geral"
           >
             <Layers className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Diversos</span>}
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Geral</span>}
           </button>
         </nav>
 
@@ -246,10 +246,8 @@ export default function Home() {
           />
         ) : (
           <GenericFinancialPage
-            title="Diversos"
-            paymentTypes={['REC', 'REE', 'RET', 'GFD', 'NFAV', '99999']}
-            includeKeywords={['Reembolso', 'Recibo', 'Taxa', 'Multa', 'DIVERSOS']}
-            excludeKeywords={['Salário', 'Adiantamento', 'Folha', 'Encargos', 'Contrato', 'Locação', 'Aluguel', 'Serviço', 'NFS', 'NFE', 'Imóveis', 'Imóvel']}
+            title="Geral"
+            fetchAllTypes={true}
             timeRange={timeRange}
             setTimeRange={setTimeRange}
             customDates={customDates}

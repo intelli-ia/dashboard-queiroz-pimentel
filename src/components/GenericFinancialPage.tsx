@@ -8,9 +8,10 @@ import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, X } from 'lucide-reac
 
 interface PageProps {
     title: string
-    paymentTypes: string[]
+    paymentTypes?: string[]
     includeKeywords?: string[]
     excludeKeywords?: string[]
+    fetchAllTypes?: boolean
     timeRange: string
     setTimeRange: (value: string) => void
     customDates: { start: string; end: string }
@@ -20,7 +21,7 @@ interface PageProps {
 type SortField = 'display_date' | 'supplier_name' | 'category_description' | 'invoice_number' | 'project_name' | 'net_amount' | 'status'
 type SortDirection = 'asc' | 'desc' | null
 
-export default function GenericFinancialPage({ title, paymentTypes, includeKeywords = [], excludeKeywords = [], timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
+export default function GenericFinancialPage({ title, paymentTypes = [], includeKeywords = [], excludeKeywords = [], fetchAllTypes = false, timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
     const [movements, setMovements] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
 
@@ -87,13 +88,26 @@ export default function GenericFinancialPage({ title, paymentTypes, includeKeywo
                 `)
 
             // Create filters
-            const typeFilter = `payment_type.in.(${paymentTypes.join(',')})`
-            const keywordFilters = includeKeywords.map(kw => `invoice_number.ilike.%${kw}%,description.ilike.%${kw}%`).join(',')
+            let mainFilter = ''
 
-            const mainFilter = keywordFilters ? `${typeFilter},${keywordFilters}` : typeFilter
+            if (!fetchAllTypes) {
+                const typeFilter = paymentTypes.length > 0 ? `payment_type.in.(${paymentTypes.join(',')})` : ''
+                const keywordFilters = includeKeywords.map(kw => `invoice_number.ilike.%${kw}%,description.ilike.%${kw}%`).join(',')
+
+                if (typeFilter && keywordFilters) {
+                    mainFilter = `${typeFilter},${keywordFilters}`
+                } else if (typeFilter) {
+                    mainFilter = typeFilter
+                } else if (keywordFilters) {
+                    mainFilter = keywordFilters
+                }
+            }
+
+            if (mainFilter) {
+                query = query.or(mainFilter)
+            }
 
             query = query
-                .or(mainFilter)
                 .or(`issue_date.gte.${startDate},due_date.gte.${startDate},payment_date.gte.${startDate}`)
                 .or(`issue_date.lte.${endDate},due_date.lte.${endDate},payment_date.lte.${endDate}`)
                 .order('issue_date', { ascending: false })
@@ -137,7 +151,7 @@ export default function GenericFinancialPage({ title, paymentTypes, includeKeywo
         } finally {
             setLoading(false)
         }
-    }, [timeRange, customDates, paymentTypes, title])
+    }, [timeRange, customDates, title, fetchAllTypes, paymentTypes.join(','), includeKeywords.join(','), excludeKeywords.join(',')])
 
     useEffect(() => {
         fetchMovements()
