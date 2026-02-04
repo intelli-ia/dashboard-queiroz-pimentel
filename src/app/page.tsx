@@ -3,16 +3,18 @@
 import { useState, useEffect } from 'react'
 import Dashboard from '@/components/Dashboard'
 import NFEPage from '@/components/NFEPage'
+import NFSPage from '@/components/NFSPage'
 import NFEDetailsPage from '@/components/NFEDetailsPage'
 import Login from '@/components/Login'
-import { LayoutDashboard, ReceiptText, List, ChevronLeft, ChevronRight, LogOut } from 'lucide-react'
+import { LayoutDashboard, ReceiptText, List, ChevronLeft, ChevronRight, LogOut, ScrollText, Users, Layers } from 'lucide-react'
+import GenericFinancialPage from '@/components/GenericFinancialPage'
 import Image from 'next/image'
 
 import { format, subDays } from 'date-fns'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'items' | 'nfe'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'items' | 'nfe' | 'nfs' | 'contracts' | 'payroll' | 'misc'>('dashboard')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Shared Filter State (must be declared before any conditional returns)
@@ -129,6 +131,55 @@ export default function Home() {
             <List className="w-5 h-5 shrink-0" />
             {!isSidebarCollapsed && <span className="font-medium hidden md:block">Detalhamento NFE</span>}
           </button>
+
+          <button
+            onClick={() => setActiveTab('nfs')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'nfs'
+              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
+              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
+              }`}
+            title="NFS"
+          >
+            <ScrollText className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">NFS</span>}
+          </button>
+
+
+          <button
+            onClick={() => setActiveTab('contracts')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'contracts'
+              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
+              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
+              }`}
+            title="Contratos"
+          >
+            <ScrollText className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Contratos</span>}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('payroll')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'payroll'
+              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
+              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
+              }`}
+            title="Folha de Pagamento"
+          >
+            <Users className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Folha de Pagamento</span>}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('misc')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'misc'
+              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
+              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
+              }`}
+            title="Diversos"
+          >
+            <Layers className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Diversos</span>}
+          </button>
         </nav>
 
         <div className="pt-4 border-t border-border-app mt-auto">
@@ -159,8 +210,46 @@ export default function Home() {
             customDates={customDates}
             setCustomDates={setCustomDates}
           />
-        ) : (
+        ) : activeTab === 'nfs' ? (
+          <NFSPage
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+            customDates={customDates}
+            setCustomDates={setCustomDates}
+          />
+        ) : activeTab === 'items' ? (
           <NFEDetailsPage
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+            customDates={customDates}
+            setCustomDates={setCustomDates}
+          />
+        ) : activeTab === 'contracts' ? (
+          <GenericFinancialPage
+            title="Contratos"
+            paymentTypes={['CTR', 'FAT', 'NLOC', 'NCS', 'CTE']}
+            includeKeywords={['Contrato', 'Locação', 'Aluguel']}
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+            customDates={customDates}
+            setCustomDates={setCustomDates}
+          />
+        ) : activeTab === 'payroll' ? (
+          <GenericFinancialPage
+            title="Folha de Pagamento"
+            paymentTypes={['SAL', '13S', 'FER', 'FPGT', 'ADI', 'GNRE', 'DAM', 'DAJE']}
+            includeKeywords={['Salário', 'Adiantamento', 'Folha', 'Encargos', 'FGTS', 'INSS', 'GRRF']}
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+            customDates={customDates}
+            setCustomDates={setCustomDates}
+          />
+        ) : (
+          <GenericFinancialPage
+            title="Diversos"
+            paymentTypes={['REC', 'REE', 'RET', 'GFD', 'NFAV', '99999']}
+            includeKeywords={['Reembolso', 'Recibo', 'Taxa', 'Multa', 'DIVERSOS']}
+            excludeKeywords={['Salário', 'Adiantamento', 'Folha', 'Encargos', 'Contrato', 'Locação', 'Aluguel', 'Serviço', 'NFS', 'NFE', 'Imóveis', 'Imóvel']}
             timeRange={timeRange}
             setTimeRange={setTimeRange}
             customDates={customDates}

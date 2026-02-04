@@ -52,9 +52,6 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
             } else if (timeRange === 'thisYear') {
                 startDate = `${currentYear}-01-01`
                 endDate = `${currentYear}-12-31`
-            } else if (timeRange === '2024') {
-                startDate = '2024-01-01'
-                endDate = '2024-12-31'
             } else if (timeRange === 'all') {
                 startDate = '2000-01-01'
                 endDate = '2099-12-31'
@@ -64,7 +61,30 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
 
             console.log('Fetching items from', startDate, 'to', endDate)
 
-            // Step 1: Fetch purchases within date range
+            // Step 1: Fetch relevant financial movements (installments) within date range for "Cash Basis"
+            const movementsQuery = supabase
+                .from('financial_movements')
+                .select('invoice_key, is_paid, payment_date, due_date, issue_date')
+                .eq('payment_type', 'NFE')
+                .or(`issue_date.gte.${startDate},due_date.gte.${startDate},payment_date.gte.${startDate}`)
+                .or(`issue_date.lte.${endDate},due_date.lte.${endDate},payment_date.lte.${endDate}`)
+
+            const movementsData = await fetchAll<any>(movementsQuery)
+
+            // Identify which invoices have "cash action" in this period
+            const validInvoiceKeys = Array.from(new Set(movementsData?.map(m => {
+                const cashDate = m.is_paid ? (m.payment_date || m.due_date) : (m.due_date || m.issue_date);
+                const displayDate = cashDate || m.issue_date;
+                if (displayDate >= startDate && displayDate <= endDate) return m.invoice_key;
+                return null;
+            }).filter(Boolean)))
+
+            if (validInvoiceKeys.length === 0) {
+                setItems([])
+                return
+            }
+
+            // Step 2: Fetch purchases for these keys
             const purchasesQuery = supabase
                 .from('purchases')
                 .select(`
@@ -77,19 +97,12 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
                     projects:project_id (name),
                     categories:purchase_category (description)
                 `)
-                .gte('issue_date', startDate)
-                .lte('issue_date', endDate)
-                .order('issue_date', { ascending: false })
+                .in('invoice_key', validInvoiceKeys)
 
             const purchasesData = await fetchAll<any>(purchasesQuery)
-            console.log('Purchases fetched:', purchasesData?.length || 0, 'records')
+            console.log('Relevant purchases fetched:', purchasesData?.length || 0)
 
-            if (!purchasesData || purchasesData.length === 0) {
-                setItems([])
-                return
-            }
-
-            const invoiceKeys = purchasesData.map(p => p.invoice_key)
+            const invoiceKeys = validInvoiceKeys
 
             // Step 2: Fetch items for these purchases
             const itemsQuery = supabase
@@ -271,37 +284,55 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
                     </p>
                 </div>
 
-                {/* Time Range Selector */}
-                <div className="flex gap-2">
-                    {['30', '90', '180', '360'].map((days) => (
+                {/* Time Range Selector (Dashboard Style) */}
+                <div className="flex bg-card-app p-1 rounded-lg border border-border-app">
+                    {['7', '30', '90', '360'].map((range) => (
                         <button
-                            key={days}
-                            onClick={() => setTimeRange(days)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${timeRange === days
-                                ? 'bg-primary-app text-white'
-                                : 'bg-muted-app text-muted-foreground hover:bg-muted-app/80'
+                            key={range}
+                            onClick={() => setTimeRange(range)}
+                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === range
+                                ? 'bg-primary-app text-white shadow-lg'
+                                : 'text-muted-foreground hover:text-white'
                                 }`}
                         >
-                            {days}D
+                            {range}D
                         </button>
                     ))}
                     <button
-                        onClick={() => setTimeRange('2024')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${timeRange === '2024'
-                            ? 'bg-primary-app text-white'
-                            : 'bg-muted-app text-muted-foreground hover:bg-muted-app/80'
+                        onClick={() => setTimeRange('lastYear')}
+                        className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'lastYear'
+                            ? 'bg-primary-app text-white shadow-lg'
+                            : 'text-muted-foreground hover:text-white'
                             }`}
                     >
-                        2024
+                        Ano passado
+                    </button>
+                    <button
+                        onClick={() => setTimeRange('thisYear')}
+                        className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'thisYear'
+                            ? 'bg-primary-app text-white shadow-lg'
+                            : 'text-muted-foreground hover:text-white'
+                            }`}
+                    >
+                        Este ano
                     </button>
                     <button
                         onClick={() => setTimeRange('all')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${timeRange === 'all'
-                            ? 'bg-primary-app text-white'
-                            : 'bg-muted-app text-muted-foreground hover:bg-muted-app/80'
+                        className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'all'
+                            ? 'bg-primary-app text-white shadow-lg'
+                            : 'text-muted-foreground hover:text-white'
                             }`}
                     >
                         Tudo
+                    </button>
+                    <button
+                        onClick={() => setTimeRange('custom')}
+                        className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'custom'
+                            ? 'bg-primary-app text-white shadow-lg'
+                            : 'text-muted-foreground hover:text-white'
+                            }`}
+                    >
+                        Pers.
                     </button>
                 </div>
             </div>

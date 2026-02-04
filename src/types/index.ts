@@ -204,8 +204,6 @@ export interface KPICardProps {
   title: string
   value: number
   icon: React.ReactNode
-  trend: string
-  isPositive: boolean
   isCurrency?: boolean
 }
 

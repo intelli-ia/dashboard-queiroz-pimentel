@@ -28,7 +28,8 @@ import {
     PieChart,
     Pie,
     Cell,
-    LabelList
+    LabelList,
+    Sector,
 } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
@@ -49,6 +50,57 @@ const formatNumber = (value: number) => {
     return new Intl.NumberFormat('pt-BR').format(value);
 }
 
+const paymentTypeLabels: Record<string, string> = {
+    'NFE': 'Notas Fiscais (NFE)',
+    'NFS': 'Serviços (NFS)',
+    'FPGT': 'Folha de Pagamento',
+    'CTR': 'Contratos',
+    'REC': 'Recibos',
+    'REE': 'Reembolsos',
+    'BOL': 'Boleto Bancário',
+    'CTE': 'Frete (CTE)',
+    'DANFE': 'Nota Fiscal',
+    'RET': 'Retenções',
+    'ADI': 'Adiantamentos',
+    'FAT': 'Faturas',
+    'NFAV': 'Nota Avulsa',
+    'NLOC': 'Locação',
+    'GRRF': 'Encargos (GRRF)',
+    'GFD': 'Guia de Impostos',
+    'CF': 'Cupom Fiscal',
+    '99999': 'Outros'
+}
+
+const renderActiveShape = (props: any) => {
+    const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+
+    return (
+        <g>
+            <Sector
+                cx={cx}
+                cy={cy}
+                innerRadius={innerRadius}
+                outerRadius={outerRadius + 6}
+                startAngle={startAngle}
+                endAngle={endAngle}
+                fill={fill}
+                stroke={fill}
+                strokeWidth={2}
+            />
+            <Sector
+                cx={cx}
+                cy={cy}
+                startAngle={startAngle}
+                endAngle={endAngle}
+                innerRadius={outerRadius + 10}
+                outerRadius={outerRadius + 12}
+                fill={fill}
+                opacity={0.3}
+            />
+        </g>
+    );
+};
+
 interface DashboardData {
     totalCost: number
     itemCount: number
@@ -59,6 +111,8 @@ interface DashboardData {
     stackedData: StackedChartData[]
     allCategories: string[]
     recentItems: FinancialTransaction[]
+    paymentTypeData: CategoryChart[]
+    avgMonthlyCost: number
 }
 
 export default function Dashboard({ timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
@@ -68,6 +122,10 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
     const [selectedDept, setSelectedDept] = useState('')
     const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false)
     const deptDropdownRef = useRef<HTMLDivElement>(null)
+
+    // Active Index for Charts
+    const [activeIndexCat, setActiveIndexCat] = useState(-1)
+    const [activeIndexPay, setActiveIndexPay] = useState(-1)
 
     // Click outside listener
     useEffect(() => {
@@ -122,6 +180,8 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
             }
 
             // Fetch financial movements (movimentações financeiras) as the main data source
+            // We use or() to capture movements where EITHER issue_date, due_date or payment_date falls in range
+            // This is safer for "Cash Basis" analysis
             let query = supabase
                 .from('financial_movements')
                 .select(`
@@ -129,6 +189,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     invoice_key,
                     invoice_number,
                     supplier_tax_id,
+                    supplier_name,
                     category_id,
                     project_id,
                     status,
@@ -140,11 +201,14 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     paid_amount,
                     net_amount,
                     installment_label,
+                    description,
+                    title_name,
+                    payment_type,
                     projects (code, name),
                     categories (code, description, standard_description)
                 `)
-                .gte('issue_date', startDate)
-                .lte('issue_date', endDate)
+                .or(`issue_date.gte.${startDate},due_date.gte.${startDate},payment_date.gte.${startDate}`)
+                .or(`issue_date.lte.${endDate},due_date.lte.${endDate},payment_date.lte.${endDate}`)
 
             if (selectedDept) {
                 query = query.eq('project_id', selectedDept)
@@ -154,33 +218,66 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
 
             console.log('Dashboard raw items (financial_movements):', rawItems)
 
-            // Map to FinancialTransaction for UI compatibility
-            // Using original_amount as the primary value (represents the financial movement)
-            const items: FinancialTransaction[] = rawItems?.map(item => ({
-                id: item.title_id,
-                transaction_date: item.payment_date || item.issue_date,
-                transaction_name: item.installment_label
-                    ? `Título: ${item.invoice_number || item.title_id} (${item.installment_label})`
-                    : `Título: ${item.invoice_number || item.title_id}`,
-                total_value: Number(item.net_amount) || Number(item.original_amount) || Number(item.paid_amount) || 0,
-                quantity_received: 1,
-                department_id: item.project_id,
-                superior_category: item.category_id,
-                supplier_name: item.supplier_name,
-                description: item.description,
-                departments: item.projects ? { name: item.projects.name } : undefined,
-                projects: item.projects ? { name: item.projects.name } : undefined,
-                categories: {
-                    category_description: item.categories?.description || item.categories?.standard_description || 'Outros',
-                    name: item.categories?.description || item.categories?.standard_description
+            // Map to FinancialTransaction for UI compatibility - Cash Basis Logic
+            const items: FinancialTransaction[] = rawItems?.map(item => {
+                // Primary date for Cash Basis is payment_date (if paid) or due_date (if open)
+                const cashDate = item.is_paid ? (item.payment_date || item.due_date) : (item.due_date || item.issue_date);
+                const transactionDate = cashDate || item.issue_date;
+
+                // Final filter check to ensure we only show items that "move money" in the selected period
+                if (transactionDate < startDate || transactionDate > endDate) return null;
+
+                // Determine a friendly name for the transaction
+                let transactionName = ''
+                if (item.title_name) {
+                    transactionName = item.title_name
+                } else if (item.supplier_name) {
+                    transactionName = item.supplier_name
+                } else if (item.description) {
+                    transactionName = item.description
+                } else {
+                    transactionName = item.installment_label
+                        ? `Título: ${item.invoice_number || item.title_id} (${item.installment_label})`
+                        : `Título: ${item.invoice_number || item.title_id}`
                 }
-            })) || []
+
+                return {
+                    id: item.title_id,
+                    transaction_date: transactionDate,
+                    transaction_name: transactionName,
+                    total_value: Number(item.net_amount) || Number(item.original_amount) || Number(item.paid_amount) || 0,
+                    quantity_received: 1,
+                    department_id: item.project_id,
+                    superior_category: item.category_id,
+                    supplier_name: item.supplier_name,
+                    description: item.description,
+                    departments: item.projects ? { name: item.projects.name } : undefined,
+                    projects: item.projects ? { name: item.projects.name } : undefined,
+                    categories: {
+                        category_description: item.categories?.description || item.categories?.standard_description || 'Outros',
+                        name: item.categories?.description || item.categories?.standard_description
+                    }
+                }
+            }).filter((item): item is NonNullable<typeof item> => item !== null) || []
 
             if (items) {
                 // Calculate Totals
                 const totalCost = items.reduce((acc, item) => acc + (Number(item.total_value) || 0), 0)
                 const itemCount = items.length
                 const avgTicket = itemCount > 0 ? totalCost / itemCount : 0
+
+                // Process Monthly Avg
+                const monthMap = new Map()
+                items.forEach(item => {
+                    const month = item.transaction_date?.substring(0, 7) // YYYY-MM
+                    if (!month) return
+                    const val = Number(item.total_value) || 0
+                    monthMap.set(month, (monthMap.get(month) || 0) + val)
+                })
+                const monthlyValues = Array.from(monthMap.values())
+                const avgMonthlyCost = monthlyValues.length > 0
+                    ? monthlyValues.reduce((a, b) => a + b, 0) / monthlyValues.length
+                    : totalCost // If only one partial month or no full month info, fallback to totalCost or 0
 
                 // Process Trend Data (Group by Date)
                 const trendMap = new Map()
@@ -221,6 +318,9 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                 const stackedMap = new Map()
                 const categorySet = new Set<string>()
 
+                // Specific Aggregations for new charts
+                const payTypeMap = new Map()
+
                 items.forEach(item => {
                     const deptName = item.departments?.name || 'Não Informado'
                     const catName = item.categories?.category_description || 'Outros'
@@ -233,7 +333,30 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     deptObj[catName] = (deptObj[catName] || 0) + val
                     deptObj.total += val
                     categorySet.add(catName)
+
+                    // Payment Type Aggregation (NFE, NFS, etc)
+                    // We assume paymentType is stored in item since we fetched it or can deduce it
+                    // Actually, rawItems has payment_type, let's make sure it's in the mapped item
                 })
+
+                // Note: I need to ensure payment_type and status are in the mapped items or re-loop rawItems
+                // Let's re-run the aggregation more cleanly
+                rawItems?.forEach(item => {
+                    // We need these metrics for the period-filtered items only
+                    const cashDate = item.is_paid ? (item.payment_date || item.due_date) : (item.due_date || item.issue_date);
+                    const transactionDate = cashDate || item.issue_date;
+                    if (transactionDate < startDate || transactionDate > endDate) return;
+
+                    const val = Number(item.net_amount) || Number(item.original_amount) || Number(item.paid_amount) || 0
+
+                    const pTypeCode = item.payment_type || 'Outros'
+                    const pTypeLabel = paymentTypeLabels[pTypeCode] || pTypeCode
+                    payTypeMap.set(pTypeLabel, (payTypeMap.get(pTypeLabel) || 0) + val)
+                })
+
+                const paymentTypeData = Array.from(payTypeMap.entries())
+                    .map(([name, value]) => ({ name, value }))
+                    .sort((a, b) => b.value - a.value)
 
                 const allCategories = Array.from(categorySet).sort()
                 const stackedData = Array.from(stackedMap.values())
@@ -248,7 +371,9 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     catData,
                     stackedData,
                     allCategories,
-                    recentItems: items.slice(0, 10)
+                    recentItems: items.slice(0, 10),
+                    paymentTypeData,
+                    avgMonthlyCost
                 })
             }
         } catch (err) {
@@ -363,15 +488,6 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                             Este ano
                         </button>
                         <button
-                            onClick={() => setTimeRange('2024')}
-                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === '2024'
-                                ? 'bg-primary-app text-white shadow-lg'
-                                : 'text-muted-foreground hover:text-white'
-                                }`}
-                        >
-                            2024
-                        </button>
-                        <button
                             onClick={() => setTimeRange('all')}
                             className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'all'
                                 ? 'bg-primary-app text-white shadow-lg'
@@ -426,37 +542,30 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     title="Custo Total"
                     value={data?.totalCost || 0}
                     icon={<DollarSign className="w-5 h-5 text-blue-500" />}
-                    trend="+12.5%"
-                    isPositive={false}
                     isCurrency
                 />
                 <KPICard
-                    title="Itens Processados"
+                    title="Movimentações"
                     value={data?.itemCount || 0}
                     icon={<LayoutGrid className="w-5 h-5 text-indigo-500" />}
-                    trend="+5.2%"
-                    isPositive={true}
                 />
                 <KPICard
                     title="Ticket Médio"
                     value={data?.avgTicket || 0}
                     icon={<TrendingUp className="w-5 h-5 text-purple-500" />}
-                    trend="-2.1%"
-                    isPositive={true}
                     isCurrency
                 />
                 <KPICard
-                    title="Departamentos"
-                    value={data?.deptData.length || 0}
-                    icon={<Users className="w-5 h-5 text-pink-500" />}
-                    trend="Estável"
-                    isPositive={true}
+                    title="Custo Médio Mensal"
+                    value={data?.avgMonthlyCost || 0}
+                    icon={<BarChart3 className="w-5 h-5 text-pink-500" />}
+                    isCurrency
                 />
             </div>
 
-            {/* Main Charts Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 glass p-6 rounded-2xl space-y-4">
+            {/* Main Charts Row - Full Width Line Chart */}
+            <div className="grid grid-cols-1 gap-6">
+                <div className="glass p-6 rounded-2xl space-y-4">
                     <div className="flex items-center justify-between">
                         <h3 className="font-semibold text-lg flex items-center gap-2">
                             <BarChart3 className="w-5 h-5 text-primary-app" />
@@ -501,33 +610,42 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                         </ResponsiveContainer>
                     </div>
                 </div>
+            </div>
 
+            {/* Row of 2 Circular Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 1. Categorias (Donut) */}
                 <div className="glass p-6 rounded-2xl space-y-6">
                     <h3 className="font-semibold text-lg">Distribuição por Categoria</h3>
-                    <div className="h-[300px]">
+                    <div className="h-[250px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
                                     data={data?.catData}
                                     cx="50%"
                                     cy="50%"
-                                    innerRadius={70}
-                                    outerRadius={100}
-                                    paddingAngle={5}
+                                    innerRadius={60}
+                                    outerRadius={80}
+                                    paddingAngle={3}
                                     dataKey="value"
-                                    label={({ percent }: { percent?: number }) => percent ? `${(percent * 100).toFixed(0)}%` : ''}
+                                    stroke="none"
+                                    activeIndex={activeIndexCat}
+                                    activeShape={renderActiveShape}
+                                    onMouseEnter={(_, index) => setActiveIndexCat(index)}
+                                    onMouseLeave={() => setActiveIndexCat(-1)}
                                 >
                                     {data?.catData.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
                                 <Tooltip
+                                    cursor={false}
                                     content={({ active, payload }: CustomTooltipProps) => {
                                         if (active && payload && payload.length) {
                                             return (
                                                 <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl shadow-2xl backdrop-blur-md">
                                                     <p className="text-white font-semibold text-sm mb-1">{payload[0].name}</p>
-                                                    <p className="text-primary-app font-bold text-lg">
+                                                    <p className="text-primary-app font-bold text-base">
                                                         {formatCurrency(payload[0].value)}
                                                     </p>
                                                 </div>
@@ -539,15 +657,75 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
-                    <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="space-y-2 max-h-[150px] overflow-y-auto pr-2 custom-scrollbar">
                         {data?.catData.map((cat, idx) => (
-                            <div key={cat.name} className="flex items-center justify-between text-sm">
+                            <div key={cat.name} className="flex items-center justify-between text-[11px]">
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                                    <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
+                                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
                                     <span className="text-muted-foreground truncate" title={cat.name}>{cat.name}</span>
                                 </div>
-                                <span className="font-medium shrink-0 ml-4">
+                                <span className="font-medium shrink-0 ml-2">
                                     {formatCurrency(cat.value)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 2. Tipos de Pagamento (Pie) */}
+                <div className="glass p-6 rounded-2xl space-y-6">
+                    <h3 className="font-semibold text-lg">Tipos de Pagamento</h3>
+                    <div className="h-[250px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={data?.paymentTypeData}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={55}
+                                    outerRadius={75}
+                                    paddingAngle={3}
+                                    dataKey="value"
+                                    stroke="none"
+                                    activeIndex={activeIndexPay}
+                                    activeShape={renderActiveShape}
+                                    onMouseEnter={(_, index) => setActiveIndexPay(index)}
+                                    onMouseLeave={() => setActiveIndexPay(-1)}
+                                    label={({ percent }: { percent?: number }) => percent && percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
+                                    labelLine={false}
+                                >
+                                    {data?.paymentTypeData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[(index + 1) % COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <Tooltip
+                                    cursor={false}
+                                    content={({ active, payload }: CustomTooltipProps) => {
+                                        if (active && payload && payload.length) {
+                                            return (
+                                                <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl shadow-2xl backdrop-blur-md">
+                                                    <p className="text-white font-semibold text-sm mb-1">{payload[0].name}</p>
+                                                    <p className="text-indigo-400 font-bold text-base">
+                                                        {formatCurrency(payload[0].value)}
+                                                    </p>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    }}
+                                />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                    <div className="space-y-2 max-h-[150px] overflow-y-auto pr-2 custom-scrollbar">
+                        {data?.paymentTypeData.map((type, idx) => (
+                            <div key={type.name} className="flex items-center justify-between text-[11px]">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[(idx + 1) % COLORS.length] }} />
+                                    <span className="text-muted-foreground truncate" title={type.name}>{type.name}</span>
+                                </div>
+                                <span className="font-medium shrink-0 ml-2">
+                                    {formatCurrency(type.value)}
                                 </span>
                             </div>
                         ))}
@@ -701,16 +879,11 @@ function CustomStackedTooltip({ active, payload, label }: CustomTooltipProps) {
     return null;
 }
 
-function KPICard({ title, value, icon, trend, isPositive, isCurrency = false }: KPICardProps) {
+function KPICard({ title, value, icon, isCurrency = false }: KPICardProps) {
     return (
         <div className="glass p-6 rounded-2xl card-shine group">
             <div className="flex items-center justify-between mb-4">
                 <div className="p-2.5 rounded-xl bg-secondary-app">{icon}</div>
-                <div className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${isPositive ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-                    }`}>
-                    {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                    {trend}
-                </div>
             </div>
             <div>
                 <p className="text-sm text-muted-foreground">{title}</p>
