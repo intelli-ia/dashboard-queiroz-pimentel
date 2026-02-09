@@ -136,12 +136,22 @@ export interface Department {
   is_active: boolean
 }
 
+// Project option for filter dropdown
+export interface ProjectOption {
+  id: string
+  name: string
+}
+
 // Page Props
 export interface PageProps {
   timeRange: string
   setTimeRange: (range: string) => void
   customDates: { start: string; end: string }
   setCustomDates: (dates: { start: string; end: string }) => void
+  // Project filter
+  selectedProject: string
+  setSelectedProject: (projectId: string) => void
+  projects: ProjectOption[]
 }
 
 // Chart types

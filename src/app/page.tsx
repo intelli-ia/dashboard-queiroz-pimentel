@@ -11,6 +11,8 @@ import GenericFinancialPage from '@/components/GenericFinancialPage'
 import Image from 'next/image'
 
 import { format, subDays } from 'date-fns'
+import { supabase } from '@/lib/supabase'
+import type { ProjectOption } from '@/types'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
@@ -18,15 +20,30 @@ export default function Home() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Shared Filter State (must be declared before any conditional returns)
-  const [timeRange, setTimeRange] = useState('360')
+  const [timeRange, setTimeRange] = useState('thisYear')
   const [customDates, setCustomDates] = useState({
     start: format(subDays(new Date(), 360), 'yyyy-MM-dd'),
     end: format(new Date(), 'yyyy-MM-dd')
   })
 
+  // Project Filter State
+  const [selectedProject, setSelectedProject] = useState('')
+  const [projects, setProjects] = useState<ProjectOption[]>([])
+
   useEffect(() => {
     checkAuth()
+    fetchProjects()
   }, [])
+
+  async function fetchProjects() {
+    const { data } = await supabase
+      .from('projects')
+      .select('code, name')
+      .order('name')
+    if (data) {
+      setProjects(data.map(p => ({ id: p.code, name: p.name })))
+    }
+  }
 
   async function checkAuth() {
     try {
@@ -202,6 +219,9 @@ export default function Home() {
             setTimeRange={setTimeRange}
             customDates={customDates}
             setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
           />
         ) : activeTab === 'nfe' ? (
           <NFEPage
@@ -209,6 +229,9 @@ export default function Home() {
             setTimeRange={setTimeRange}
             customDates={customDates}
             setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
           />
         ) : activeTab === 'nfs' ? (
           <NFSPage
@@ -216,6 +239,9 @@ export default function Home() {
             setTimeRange={setTimeRange}
             customDates={customDates}
             setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
           />
         ) : activeTab === 'items' ? (
           <NFEDetailsPage
@@ -223,6 +249,9 @@ export default function Home() {
             setTimeRange={setTimeRange}
             customDates={customDates}
             setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
           />
         ) : activeTab === 'contracts' ? (
           <GenericFinancialPage
@@ -233,6 +262,9 @@ export default function Home() {
             setTimeRange={setTimeRange}
             customDates={customDates}
             setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
           />
         ) : activeTab === 'payroll' ? (
           <GenericFinancialPage
@@ -243,6 +275,9 @@ export default function Home() {
             setTimeRange={setTimeRange}
             customDates={customDates}
             setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
           />
         ) : (
           <GenericFinancialPage
@@ -252,6 +287,9 @@ export default function Home() {
             setTimeRange={setTimeRange}
             customDates={customDates}
             setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
           />
         )}
       </div>

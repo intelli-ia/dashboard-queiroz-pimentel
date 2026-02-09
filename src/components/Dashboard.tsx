@@ -4,17 +4,11 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
     BarChart3,
     TrendingUp,
-    Users,
     LayoutGrid,
     DollarSign,
-    ArrowUpRight,
-    ArrowDownRight,
-    Filter,
     RefreshCcw,
-    ChevronDown,
-    X
 } from 'lucide-react'
-import { useRef } from 'react'
+import GlobalFilterBar from './GlobalFilterBar'
 import {
     AreaChart,
     Area,
@@ -34,7 +28,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
-import type { PageProps, Department, FinancialTransaction, ChartDataPoint, DepartmentChart, CategoryChart, StackedChartData, KPICardProps, CustomTooltipProps, TooltipEntry } from '@/types'
+import type { PageProps, FinancialTransaction, ChartDataPoint, DepartmentChart, CategoryChart, StackedChartData, KPICardProps, CustomTooltipProps, TooltipEntry } from '@/types'
 import { ptBR } from 'date-fns/locale'
 
 const formatCurrency = (value: number) => {
@@ -115,42 +109,13 @@ interface DashboardData {
     avgMonthlyCost: number
 }
 
-export default function Dashboard({ timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
+export default function Dashboard({ timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
     const [data, setData] = useState<DashboardData | null>(null)
     const [loading, setLoading] = useState(true)
-    const [departments, setDepartments] = useState<Department[]>([])
-    const [selectedDept, setSelectedDept] = useState('')
-    const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false)
-    const deptDropdownRef = useRef<HTMLDivElement>(null)
 
     // Active Index for Charts
     const [activeIndexCat, setActiveIndexCat] = useState(-1)
     const [activeIndexPay, setActiveIndexPay] = useState(-1)
-
-    // Click outside listener
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (deptDropdownRef.current && !deptDropdownRef.current.contains(event.target as Node)) {
-                setIsDeptDropdownOpen(false)
-            }
-        }
-        document.addEventListener('mousedown', handleClickOutside)
-        return () => document.removeEventListener('mousedown', handleClickOutside)
-    }, [])
-
-    const fetchDepartments = useCallback(async () => {
-        const { data: projData, error, status } = await supabase
-            .from('projects')
-            .select('*')
-            .order('name')
-        console.log('fetchProjects:', { data: projData?.length || 0, error, status })
-        if (projData) setDepartments(projData.map(p => ({
-            id: p.code,
-            name: p.name,
-            omie_department_id: p.code,
-            is_active: true
-        })))
-    }, [])
 
     const fetchDashboardData = useCallback(async () => {
         setLoading(true)
@@ -210,8 +175,8 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                 .or(`issue_date.gte.${startDate},due_date.gte.${startDate},payment_date.gte.${startDate}`)
                 .or(`issue_date.lte.${endDate},due_date.lte.${endDate},payment_date.lte.${endDate}`)
 
-            if (selectedDept) {
-                query = query.eq('project_id', selectedDept)
+            if (selectedProject) {
+                query = query.eq('project_id', selectedProject)
             }
 
             const rawItems = await fetchAll<any>(query.order('issue_date', { ascending: false }))
@@ -381,11 +346,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
         } finally {
             setLoading(false)
         }
-    }, [timeRange, customDates, selectedDept])
-
-    useEffect(() => {
-        fetchDepartments()
-    }, [fetchDepartments])
+    }, [timeRange, customDates, selectedProject])
 
     useEffect(() => {
         fetchDashboardData()
@@ -404,137 +365,18 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                 </div>
             )}
 
-            {/* Header */}
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Custos por Projetos</h1>
-                        <p className="text-muted-foreground">Dashboard Gerencial</p>
-                    </div>
-                    {loading && data && (
-                        <RefreshCcw className="w-5 h-5 animate-spin text-primary-app/50" />
-                    )}
-                </div>
-                <div className="flex items-center gap-3">
-                    <div className="relative group" ref={deptDropdownRef}>
-                        <button
-                            onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
-                            className="flex items-center justify-between bg-card-app border border-border-app rounded-lg px-3 py-2 text-[13px] text-muted-foreground w-[180px] md:w-[220px] transition-all hover:border-primary-app/50"
-                        >
-                            <span className="truncate pr-2 text-foreground-app">
-                                {selectedDept
-                                    ? departments.find(d => d.omie_department_id === selectedDept)?.name
-                                    : 'Geral (Todas Obras)'}
-                            </span>
-                            <ChevronDown className={`w-4 h-4 transition-transform ${isDeptDropdownOpen ? 'rotate-180' : ''}`} />
-                        </button>
-
-                        {isDeptDropdownOpen && (
-                            <div className="absolute top-full left-0 right-0 mt-2 bg-card-app border border-border-app rounded-xl shadow-2xl z-[100] max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-200">
-                                <button
-                                    onClick={() => {
-                                        setSelectedDept('')
-                                        setIsDeptDropdownOpen(false)
-                                    }}
-                                    className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 ${!selectedDept ? 'bg-primary-app/10 text-primary-app' : 'text-muted-foreground'}`}
-                                >
-                                    Geral (Todas Obras)
-                                </button>
-                                {departments.map((dept) => (
-                                    <button
-                                        key={dept.id}
-                                        onClick={() => {
-                                            setSelectedDept(dept.omie_department_id)
-                                            setIsDeptDropdownOpen(false)
-                                        }}
-                                        className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 last:border-0 ${selectedDept === dept.omie_department_id ? 'bg-primary-app/10 text-primary-app' : 'text-muted-foreground'}`}
-                                    >
-                                        {dept.name}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex bg-card-app p-1 rounded-lg border border-border-app">
-                        {['7', '30', '90', '360'].map((range) => (
-                            <button
-                                key={range}
-                                onClick={() => setTimeRange(range)}
-                                className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === range
-                                    ? 'bg-primary-app text-white shadow-lg'
-                                    : 'text-muted-foreground hover:text-white'
-                                    }`}
-                            >
-                                {range}D
-                            </button>
-                        ))}
-                        <button
-                            onClick={() => setTimeRange('lastYear')}
-                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'lastYear'
-                                ? 'bg-primary-app text-white shadow-lg'
-                                : 'text-muted-foreground hover:text-white'
-                                }`}
-                        >
-                            Ano passado
-                        </button>
-                        <button
-                            onClick={() => setTimeRange('thisYear')}
-                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'thisYear'
-                                ? 'bg-primary-app text-white shadow-lg'
-                                : 'text-muted-foreground hover:text-white'
-                                }`}
-                        >
-                            Este ano
-                        </button>
-                        <button
-                            onClick={() => setTimeRange('all')}
-                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'all'
-                                ? 'bg-primary-app text-white shadow-lg'
-                                : 'text-muted-foreground hover:text-white'
-                                }`}
-                        >
-                            Tudo
-                        </button>
-                        <button
-                            onClick={() => setTimeRange('custom')}
-                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'custom'
-                                ? 'bg-primary-app text-white shadow-lg'
-                                : 'text-muted-foreground hover:text-white'
-                                }`}
-                        >
-                            Pers.
-                        </button>
-                    </div>
-                    <button className="p-2.5 rounded-lg border border-border-app bg-card-app hover:bg-secondary-app transition-colors">
-                        <Filter className="w-5 h-5" />
-                    </button>
-                </div>
-            </header>
-
-            {/* Custom Date Picker Section */}
-            {timeRange === 'custom' && (
-                <div className="glass p-4 rounded-xl flex flex-wrap items-center gap-4 animate-in slide-in-from-top-2 duration-300">
-                    <div className="flex items-center gap-2">
-                        <label className="text-sm text-muted-foreground">De:</label>
-                        <input
-                            type="date"
-                            value={customDates.start}
-                            onChange={(e) => setCustomDates({ ...customDates, start: e.target.value })}
-                            className="bg-muted-app border border-border-app rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-app outline-none appearance-none invert hue-rotate-180 brightness-90"
-                        />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <label className="text-sm text-muted-foreground">Até:</label>
-                        <input
-                            type="date"
-                            value={customDates.end}
-                            onChange={(e) => setCustomDates({ ...customDates, end: e.target.value })}
-                            className="bg-muted-app border border-border-app rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-app outline-none appearance-none invert hue-rotate-180 brightness-90"
-                        />
-                    </div>
-                </div>
-            )}
+            <GlobalFilterBar
+                timeRange={timeRange}
+                setTimeRange={setTimeRange}
+                customDates={customDates}
+                setCustomDates={setCustomDates}
+                selectedProject={selectedProject}
+                setSelectedProject={setSelectedProject}
+                projects={projects}
+                title="Custos por Projetos"
+                subtitle="Dashboard Gerencial"
+                loading={loading && !!data}
+            />
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -4,24 +4,23 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
-import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, X } from 'lucide-react'
+import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, X, BarChart3 } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
+import GlobalFilterBar from './GlobalFilterBar'
+import type { PageProps as BasePageProps, ProjectOption } from '@/types'
 
-interface PageProps {
+interface PageProps extends BasePageProps {
     title: string
     paymentTypes?: string[]
     includeKeywords?: string[]
     excludeKeywords?: string[]
     fetchAllTypes?: boolean
-    timeRange: string
-    setTimeRange: (value: string) => void
-    customDates: { start: string; end: string }
-    setCustomDates: (dates: { start: string; end: string }) => void
 }
 
 type SortField = 'display_date' | 'supplier_name' | 'category_description' | 'invoice_number' | 'project_name' | 'net_amount' | 'status'
 type SortDirection = 'asc' | 'desc' | null
 
-export default function GenericFinancialPage({ title, paymentTypes = [], includeKeywords = [], excludeKeywords = [], fetchAllTypes = false, timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
+export default function GenericFinancialPage({ title, paymentTypes = [], includeKeywords = [], excludeKeywords = [], fetchAllTypes = false, timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
     const [movements, setMovements] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
 
@@ -87,6 +86,11 @@ export default function GenericFinancialPage({ title, paymentTypes = [], include
                     categories:category_id (description)
                 `)
 
+            // Add project filter if selected
+            if (selectedProject) {
+                query = query.eq('project_id', selectedProject)
+            }
+
             // Create filters
             let mainFilter = ''
 
@@ -151,7 +155,7 @@ export default function GenericFinancialPage({ title, paymentTypes = [], include
         } finally {
             setLoading(false)
         }
-    }, [timeRange, customDates, title, fetchAllTypes, paymentTypes.join(','), includeKeywords.join(','), excludeKeywords.join(',')])
+    }, [timeRange, customDates, selectedProject, title, fetchAllTypes, paymentTypes.join(','), includeKeywords.join(','), excludeKeywords.join(',')])
 
     useEffect(() => {
         fetchMovements()
@@ -221,66 +225,42 @@ export default function GenericFinancialPage({ title, paymentTypes = [], include
         }), { total: 0, paid: 0, pending: 0 })
     }, [filteredMovements])
 
-    return (
-        <div className="p-6 space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-white">{title}</h1>
-                    <p className="text-muted-foreground text-sm">Visualização detalhada por tipo de pagamento</p>
-                </div>
+    const CHART_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316']
 
-                {/* Time Range Selector (Dashboard Style) */}
-                <div className="flex bg-card-app p-1 rounded-lg border border-border-app">
-                    {['7', '30', '90', '360'].map((range) => (
-                        <button
-                            key={range}
-                            onClick={() => setTimeRange(range)}
-                            className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === range
-                                ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-                                : 'text-muted-foreground hover:text-white'
-                                }`}
-                        >
-                            {range}D
-                        </button>
-                    ))}
-                    <button
-                        onClick={() => setTimeRange('lastYear')}
-                        className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'lastYear'
-                            ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-                            : 'text-muted-foreground hover:text-white'
-                            }`}
-                    >
-                        Ano passado
-                    </button>
-                    <button
-                        onClick={() => setTimeRange('thisYear')}
-                        className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'thisYear'
-                            ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-                            : 'text-muted-foreground hover:text-white'
-                            }`}
-                    >
-                        Este ano
-                    </button>
-                    <button
-                        onClick={() => setTimeRange('all')}
-                        className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'all'
-                            ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-                            : 'text-muted-foreground hover:text-white'
-                            }`}
-                    >
-                        Tudo
-                    </button>
-                    <button
-                        onClick={() => setTimeRange('custom')}
-                        className={`px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'custom'
-                            ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-                            : 'text-muted-foreground hover:text-white'
-                            }`}
-                    >
-                        Pers.
-                    </button>
-                </div>
-            </div>
+    const categoryChartData = useMemo(() => {
+        const categoryMap = new Map<string, number>()
+        filteredMovements.forEach(item => {
+            const cat = item.category_description || 'Sem Categoria'
+            categoryMap.set(cat, (categoryMap.get(cat) || 0) + (Number(item.net_amount) || 0))
+        })
+        return Array.from(categoryMap, ([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10)
+    }, [filteredMovements])
+
+    const formatCurrency = (value: number) => {
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+        }).format(value)
+    }
+
+    return (
+        <div className="space-y-6 px-4 md:px-8">
+            <GlobalFilterBar
+                timeRange={timeRange}
+                setTimeRange={setTimeRange}
+                customDates={customDates}
+                setCustomDates={setCustomDates}
+                selectedProject={selectedProject}
+                setSelectedProject={setSelectedProject}
+                projects={projects}
+                title={title}
+                subtitle="Visualização detalhada por tipo de pagamento"
+                loading={loading}
+            />
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -293,6 +273,63 @@ export default function GenericFinancialPage({ title, paymentTypes = [], include
                     </div>
                 </div>
             </div>
+
+            {/* Category Chart */}
+            {!loading && categoryChartData.length > 0 && (
+                <div className="glass rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                        <BarChart3 className="w-5 h-5 text-primary-app" />
+                        <h3 className="text-lg font-semibold">Custos por Categoria</h3>
+                    </div>
+                    <div className="h-[280px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={categoryChartData} margin={{ top: 10, right: 10, left: 10, bottom: 60 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+                                <XAxis
+                                    dataKey="name"
+                                    tick={{ fill: '#94a3b8', fontSize: 10 }}
+                                    angle={-45}
+                                    textAnchor="end"
+                                    height={80}
+                                    interval={0}
+                                />
+                                <YAxis
+                                    tick={{ fill: '#94a3b8', fontSize: 10 }}
+                                    tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
+                                    width={60}
+                                />
+                                <Tooltip
+                                    cursor={false}
+                                    content={({ active, payload }) => {
+                                        if (active && payload && payload.length) {
+                                            return (
+                                                <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-2xl">
+                                                    <p className="text-white font-semibold text-sm mb-1">{payload[0].payload.name}</p>
+                                                    <p className="text-primary-app font-bold text-lg">
+                                                        {formatCurrency(payload[0].value as number)}
+                                                    </p>
+                                                </div>
+                                            )
+                                        }
+                                        return null
+                                    }}
+                                />
+                                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                                    {categoryChartData.map((_, index) => (
+                                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                                    ))}
+                                    <LabelList
+                                        dataKey="value"
+                                        position="top"
+                                        formatter={(value: number) => `R$ ${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
+                                        style={{ fill: '#e2e8f0', fontSize: 12, fontWeight: 600 }}
+                                    />
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            )}
 
             <div className="bg-card-app border border-border-app rounded-2xl overflow-hidden shadow-2xl relative">
                 {loading && (
