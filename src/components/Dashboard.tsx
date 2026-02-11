@@ -401,15 +401,15 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     isCurrency
                 />
                 <KPICard
-                    title="Movimentações"
-                    value={data?.itemCount || 0}
-                    icon={<LayoutGrid className="w-5 h-5 text-indigo-500" />}
-                />
-                <KPICard
                     title="Recebimentos"
                     value={data?.totalReceipts || 0}
                     icon={<TrendingUp className="w-5 h-5 text-purple-500" />}
                     isCurrency
+                />
+                <KPICard
+                    title="Movimentações"
+                    value={data?.itemCount || 0}
+                    icon={<LayoutGrid className="w-5 h-5 text-indigo-500" />}
                 />
                 <KPICard
                     title="Custo Médio Mensal"
