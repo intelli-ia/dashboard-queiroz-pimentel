@@ -98,7 +98,7 @@ const renderActiveShape = (props: any) => {
 interface DashboardData {
     totalCost: number
     itemCount: number
-    avgTicket: number
+    totalReceipts: number
     trendData: ChartDataPoint[]
     deptData: DepartmentChart[]
     catData: CategoryChart[]
@@ -144,7 +144,21 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd');
             }
 
-            // Fetch financial movements (movimentações financeiras) as the main data source
+            // 1. Fetch Receipts (New requirement)
+            let receiptsQuery = supabase
+                .from('receipts')
+                .select('valor_documento, codigo_projeto, data_vencimento')
+                .gte('data_vencimento', startDate)
+                .lte('data_vencimento', endDate)
+
+            if (selectedProject) {
+                receiptsQuery = receiptsQuery.eq('codigo_projeto', parseInt(selectedProject))
+            }
+
+            const { data: receiptsData } = await receiptsQuery
+            const totalReceipts = receiptsData?.reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0) || 0
+
+            // 2. Fetch financial movements (movimentações financeiras) as the main data source
             // We use or() to capture movements where EITHER issue_date, due_date or payment_date falls in range
             // This is safer for "Cash Basis" analysis
             let query = supabase
@@ -330,7 +344,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                 setData({
                     totalCost,
                     itemCount,
-                    avgTicket,
+                    totalReceipts,
                     trendData,
                     deptData,
                     catData,
@@ -392,8 +406,8 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     icon={<LayoutGrid className="w-5 h-5 text-indigo-500" />}
                 />
                 <KPICard
-                    title="Ticket Médio"
-                    value={data?.avgTicket || 0}
+                    title="Recebimentos"
+                    value={data?.totalReceipts || 0}
                     icon={<TrendingUp className="w-5 h-5 text-purple-500" />}
                     isCurrency
                 />

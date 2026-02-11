@@ -223,30 +223,6 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
             {/* Filters Bar */}
             <div className="glass p-6 rounded-2xl space-y-6 relative z-30">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
-                    {/* Search */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                            <Search className="w-4 h-4" /> Buscar
-                        </label>
-                        <div className="relative">
-                            <input
-                                type="text"
-                                placeholder="Nº Documento, Obra..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-muted-app border border-border-app rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-app transition-all"
-                            />
-                            {searchTerm && (
-                                <button
-                                    onClick={() => setSearchTerm('')}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-white/10 rounded-full"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
                     {/* Status Filter */}
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -283,16 +259,16 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                     </div>
 
                     {/* Date Range - Reusing existing prop logic */}
-                    <div className="space-y-2">
+                    <div className="space-y-2 lg:col-span-2">
                         <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                             <Calendar className="w-4 h-4" /> Vencimento
                         </label>
-                        <div className="flex bg-card-app p-1 rounded-lg border border-border-app h-[42px]">
+                        <div className="flex bg-card-app p-1 rounded-lg border border-border-app h-[42px] overflow-x-auto scrollbar-hide">
                             {['30', '90', '360'].map((range) => (
                                 <button
                                     key={range}
                                     onClick={() => setTimeRange(range)}
-                                    className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === range
+                                    className={`flex-1 min-w-[50px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === range
                                         ? 'bg-primary-app text-white shadow-lg'
                                         : 'text-muted-foreground hover:text-white'
                                         }`}
@@ -302,7 +278,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                             ))}
                             <button
                                 onClick={() => setTimeRange('thisYear')}
-                                className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'thisYear'
+                                className={`flex-1 min-w-[90px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'thisYear'
                                     ? 'bg-primary-app text-white shadow-lg'
                                     : 'text-muted-foreground hover:text-white'
                                     }`}
@@ -311,7 +287,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                             </button>
                             <button
                                 onClick={() => setTimeRange('all')}
-                                className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'all'
+                                className={`flex-1 min-w-[80px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'all'
                                     ? 'bg-primary-app text-white shadow-lg'
                                     : 'text-muted-foreground hover:text-white'
                                     }`}
@@ -320,12 +296,12 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                             </button>
                             <button
                                 onClick={() => setTimeRange('custom')}
-                                className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all ${timeRange === 'custom'
+                                className={`flex-1 min-w-[60px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'custom'
                                     ? 'bg-primary-app text-white shadow-lg'
                                     : 'text-muted-foreground hover:text-white'
                                     }`}
                             >
-                                ...
+                                Período
                             </button>
                         </div>
                     </div>

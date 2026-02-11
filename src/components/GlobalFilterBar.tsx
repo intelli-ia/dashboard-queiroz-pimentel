@@ -108,49 +108,45 @@ export default function GlobalFilterBar({
 
           {/* Right side: Date Range Filters */}
           <div className="flex items-center gap-3">
-            <div className="flex bg-card-app p-1 rounded-lg border border-border-app overflow-x-auto">
+            <div className="flex bg-card-app p-1 rounded-lg border border-border-app overflow-x-auto scrollbar-hide">
               {['7', '30', '90'].map((range) => (
                 <button
                   key={range}
                   onClick={() => setTimeRange(range)}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${
-                    timeRange === range
+                  className={`min-w-[45px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === range
                       ? 'bg-primary-app text-white shadow-lg'
                       : 'text-muted-foreground hover:text-white'
-                  }`}
+                    }`}
                 >
                   {range}D
                 </button>
               ))}
               <button
                 onClick={() => setTimeRange('thisYear')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${
-                  timeRange === 'thisYear'
+                className={`min-w-[85px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'thisYear'
                     ? 'bg-primary-app text-white shadow-lg'
                     : 'text-muted-foreground hover:text-white'
-                }`}
+                  }`}
               >
                 Este ano
               </button>
               <button
                 onClick={() => setTimeRange('all')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${
-                  timeRange === 'all'
+                className={`min-w-[75px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'all'
                     ? 'bg-primary-app text-white shadow-lg'
                     : 'text-muted-foreground hover:text-white'
-                }`}
+                  }`}
               >
-                Tudo
+                Todas
               </button>
               <button
                 onClick={() => setTimeRange('custom')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${
-                  timeRange === 'custom'
+                className={`min-w-[80px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'custom'
                     ? 'bg-primary-app text-white shadow-lg'
                     : 'text-muted-foreground hover:text-white'
-                }`}
+                  }`}
               >
-                Pers.
+                Período
               </button>
             </div>
           </div>
