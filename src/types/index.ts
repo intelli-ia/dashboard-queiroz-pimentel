@@ -230,3 +230,38 @@ export interface CustomTooltipProps {
   payload?: any[]
   label?: string
 }
+
+// Receipts - Contas a Receber
+export interface Receipt {
+  codigo_lancamento: number
+  codigo_projeto: number
+  nome_obra: string
+  codigo_cliente: number
+  numero_documento: string
+  tipo_documento: string
+  categoria: string
+  valor_documento: number
+  status: string
+  data_emissao: string
+  data_vencimento: string
+  data_previsao: string
+
+  // Impostos
+  retem_ir: boolean
+  valor_ir: number
+  retem_iss: boolean
+  valor_iss: number
+  retem_inss: boolean
+  valor_inss: number
+  total_impostos: number
+
+  // Parcelamento
+  parcela_atual: number
+  total_parcelas: number
+  is_parcelado: boolean
+  valor_parcela: number
+
+  // Auditoria
+  created_at: string
+  updated_at: string
+}

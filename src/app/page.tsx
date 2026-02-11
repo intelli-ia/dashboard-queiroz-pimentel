@@ -6,8 +6,9 @@ import NFEPage from '@/components/NFEPage'
 import NFSPage from '@/components/NFSPage'
 import NFEDetailsPage from '@/components/NFEDetailsPage'
 import Login from '@/components/Login'
-import { LayoutDashboard, ReceiptText, List, ChevronLeft, ChevronRight, LogOut, ScrollText, Users, Layers } from 'lucide-react'
+import { LayoutDashboard, ReceiptText, List, ChevronLeft, ChevronRight, LogOut, ScrollText, Users, Layers, TrendingUp } from 'lucide-react'
 import GenericFinancialPage from '@/components/GenericFinancialPage'
+import ReceiptsPage from '@/components/ReceiptsPage'
 import Image from 'next/image'
 
 import { format, subDays } from 'date-fns'
@@ -16,7 +17,7 @@ import type { ProjectOption } from '@/types'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'items' | 'nfe' | 'nfs' | 'contracts' | 'payroll' | 'misc'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'items' | 'nfe' | 'nfs' | 'contracts' | 'payroll' | 'receipts' | 'misc'>('dashboard')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Shared Filter State (must be declared before any conditional returns)
@@ -138,6 +139,18 @@ export default function Home() {
           </button>
 
           <button
+            onClick={() => setActiveTab('receipts')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'receipts'
+              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
+              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
+              }`}
+            title="Contas a Receber"
+          >
+            <TrendingUp className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Contas a Receber</span>}
+          </button>
+
+          <button
             onClick={() => setActiveTab('items')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'items'
               ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
@@ -245,6 +258,16 @@ export default function Home() {
           />
         ) : activeTab === 'items' ? (
           <NFEDetailsPage
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+            customDates={customDates}
+            setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
+          />
+        ) : activeTab === 'receipts' ? (
+          <ReceiptsPage
             timeRange={timeRange}
             setTimeRange={setTimeRange}
             customDates={customDates}
