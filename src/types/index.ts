@@ -176,17 +176,42 @@ export interface StackedChartData {
   [key: string]: string | number
 }
 
+export interface TaxAnalysisData {
+  inss: number
+  fgts: number
+  ir: number
+  iss: number
+  pis: number
+  cofins: number
+  csll: number
+  totalEncargos: number
+  valorBrutoNF: number
+  valorReajuste: number
+  valorLiquidoNF: number
+  valorContrato: number
+  saldoContrato: number
+  fornecedoresAberto: number
+  maquinasEquipamentos: number
+  custosFinanceiros: number
+  escritorioCentral: number
+  custoTotal: number
+  diferenca: number
+}
+
 // Dashboard specific
 export interface DashboardData {
   totalCost: number
   itemCount: number
-  avgTicket: number
+  totalReceipts: number
   trendData: ChartDataPoint[]
   deptData: DepartmentChart[]
   catData: CategoryChart[]
   stackedData: StackedChartData[]
   allCategories: string[]
   recentItems: FinancialTransaction[]
+  paymentTypeData: CategoryChart[]
+  avgMonthlyCost: number
+  taxAnalysis: TaxAnalysisData
 }
 
 // Items page aggregation
