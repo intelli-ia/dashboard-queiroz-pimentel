@@ -1,140 +1,183 @@
-// New Schema Types
+// ============================================
+// NEW SCHEMA TYPES (dashboard)
+// ============================================
+
+// Projects - Tabela de projetos/obras
 export interface Project {
-  id: string
+  code: string  // PK
   name: string
-  full_description: string
 }
 
+// Categories - Categorias financeiras hierarquicas
 export interface Category {
-  id: string
-  code: string
-  parent_code?: string
-  name: string
+  code: string  // PK
+  parent_code: string | null
   description: string
-  standard_description: string
-  full_description: string
-  category_code?: string // For backward compatibility
-  category_description?: string // For backward compatibility
-  category_type?: string // For backward compatibility
-  is_active?: boolean
+  standard_description: string | null
 }
 
-// Purchases - Tabela de notas fiscais de compra (antiga purchase_invoices)
-export interface Purchase {
-  invoice_key: string
-  invoice_number?: string
-  issue_date: string
-  purchase_category: string // Renamed from category_id
-  project_id: string
-  supplier_legal_name?: string
-  supplier_tax_id?: string
-  invoice_total_amount?: number
-  total_installments?: number
-  // Campos fiscais
-  icms_value?: number
-  total_pis?: number
-  total_cofins?: number
-  approx_tax_value?: number
-  // Dados de transporte
-  carrier_name?: string
-  freight_type?: string
-  gross_weight?: number
-  // Relações
-  categories?: Category
-  projects?: Project
+// Accounts Payable - Contas a Pagar
+export interface AccountPayable {
+  codigo_lancamento_omie: number  // PK
+  codigo_cliente_fornecedor: number | null
+  project_code: string | null
+  category_code: string | null
+  document_type: string | null  // NFE, NFS, BOL, REC, PIX, TED, DIN
+  numero_documento: string | null
+  numero_documento_fiscal: string | null
+  current_installment: number
+  total_installments: number
+  data_emissao: string | null
+  data_entrada: string | null
+  data_previsao: string | null
+  data_vencimento: string | null
+  status_titulo: string | null  // LIQUIDADO, ABERTO, CANCELADO, ATRASADO
+  valor_documento: number | null
+  // Tax retention flags
+  retem_cofins: boolean
+  retem_csll: boolean
+  retem_inss: boolean
+  retem_ir: boolean
+  retem_iss: boolean
+  retem_pis: boolean
+  // Tax values
+  valor_inss: number | null
+  valor_ir: number | null
+  valor_iss: number | null
+  // Metadata
+  id_conta_corrente: number | null
+  id_origem: string | null
+  created_at: string | null
+  updated_at: string | null
+  // Joined relations
+  projects?: { code: string; name: string }
+  categories?: { code: string; description: string }
 }
 
-// Alias para compatibilidade
-export type PurchaseInvoice = Purchase
-
-// Purchase Items - Itens das notas fiscais (antiga purchase_invoice_items)
-export interface PurchaseItem {
-  invoice_key: string
-  item_sequence: number // Renamed from item_internal_id
-  product_code?: string
-  product_description: string
-  ncm_code?: string
-  quantity: number
-  unit_price?: number
-  total_item_value: number
-  // Tributos por item
-  icms_value?: number
-  pis_value?: number
-  cofins_value?: number
-  approx_tax_value?: number
-  // Relações
-  purchases?: Purchase
+// Accounts Receivable - Contas a Receber
+export interface AccountReceivable {
+  codigo_lancamento_omie: number  // PK
+  codigo_cliente_fornecedor: number | null
+  project_code: string | null
+  category_code: string | null
+  document_type: string | null
+  numero_documento: string | null
+  numero_documento_fiscal: string | null
+  current_installment: number
+  total_installments: number
+  data_emissao: string | null
+  data_previsao: string | null
+  data_registro: string | null
+  data_vencimento: string | null
+  status_titulo: string  // Default: 'RECEBIDO'
+  valor_documento: number | null
+  // Tax retention flags
+  retem_inss: boolean
+  retem_ir: boolean
+  retem_iss: boolean
+  // Tax values
+  valor_inss: number | null
+  valor_ir: number | null
+  valor_iss: number | null
+  // Metadata
+  id_conta_corrente: number | null
+  id_origem: string | null
+  created_at: string | null
+  updated_at: string | null
+  // Joined relations
+  projects?: { code: string; name: string }
+  categories?: { code: string; description: string }
 }
 
-// Alias para compatibilidade
-export type PurchaseInvoiceItem = PurchaseItem
-
-export interface FinancialInstallment {
-  installment_id: string
-  invoice_key: string
-  due_date: string
-  installment_value: number
-  purchases?: Purchase
-}
-
-// Financial Movements - Tabela principal de movimentações financeiras (antiga financial_accounts_payable)
+// Financial Movements - Movimentos Financeiros (tabela detalhada)
 export interface FinancialMovement {
-  title_id: string
-  invoice_key: string | null
-  invoice_number: string | null
-  supplier_tax_id: string | null
-  category_id: string | null
-  project_id: string | null
+  codigo_titulo: number  // PK
+  codigo_titulo_repetido: number | null
+  cpf_cnpj_cliente: string | null
+  codigo_cliente: number | null
+  project_code: string | null
+  category_code: string | null
+  document_type: string | null
+  numero_documento_fiscal: string | null
+  numero_titulo: string | null
+  current_installment: number
+  total_installments: number
+  grupo: string | null
+  natureza: string | null  // 'E' (Entrada) or 'S' (Saida)
+  origem: string | null
+  operacao: string | null
   status: string | null
-  is_paid: boolean | null
-  issue_date: string | null
-  due_date: string | null
-  payment_date: string | null
-  forecast_date: string | null
-  original_amount: number | null
-  discount_amount: number | null
-  interest_amount: number | null
-  penalty_amount: number | null
-  paid_amount: number | null
-  open_amount: number | null
-  net_amount: number | null
-  installment_label: string | null
-  // Relações
-  projects?: Project
-  categories?: Category
-  purchases?: Purchase
+  liquidado: boolean | null
+  data_emissao: string | null
+  data_pagamento: string | null
+  data_previsao: string | null
+  data_registro: string | null
+  data_vencimento: string | null
+  valor_titulo: number | null
+  juros: number | null
+  desconto: number | null
+  juros_resumo: number | null
+  multa: number | null
+  valor_aberto: number | null
+  valor_liquido: number | null
+  valor_pago: number | null
+  codigo_conta_corrente: number | null
+  codigo_nf: number | null
+  is_nfe: boolean
+  chave_nfe: string | null
+  // Joined relations
+  projects?: { code: string; name: string }
+  categories?: { code: string; description: string }
 }
 
-// Alias para compatibilidade
-export type FinancialAccountsPayable = FinancialMovement
-
-// Legacy/UI Compatibility Types
-export interface FinancialTransaction {
-  id: string
-  transaction_date: string
-  transaction_name: string
-  total_value: number
-  quantity_received: number
-  department_id: string
-  superior_category: string
-  document_number?: string
-  departments?: { name: string }
-  projects?: { name: string } // Support new schema
-  categories?: {
-    category_description: string
-    name?: string // Support new schema
-    category_code?: string
-    category_type?: string
-  }
+// NFE Headers - Cabecalhos de Notas Fiscais Eletronicas
+export interface NFEHeader {
+  id_recebimento: number  // PK
+  id_fornecedor: number | null
+  cpf_cnpj: string | null
+  nome_fantasia: string | null
+  razao_social: string | null
+  numero_nfe: string | null
+  serie_nfe: string | null
+  chave_nfe: string | null
+  data_emissao: string | null
+  valor_nfe: number | null
+  project_code: string | null
+  // Joined relations
+  projects?: { code: string; name: string }
 }
 
-// Keep old interfaces for now to avoid breaking other things
-export interface Department {
-  id: string
-  name: string
-  omie_department_id: string
-  is_active: boolean
+// NFE Items - Itens de Notas Fiscais
+export interface NFEItem {
+  id_item: number  // PK
+  id_recebimento: number  // FK to nfe_headers
+  codigo_produto: string | null
+  id_produto: number | null
+  descricao_produto: string | null
+  ncm: string | null
+  cfop: string | null
+  category_code: string | null
+  unidade: string | null
+  quantidade: number | null
+  preco_unitario: number | null
+  valor_total: number | null
+  desconto: number | null
+  sequencia: number | null
+  // Tax fields
+  icms_origem: string | null
+  icms_sit_trib: string | null
+  ipi_enquadramento: string | null
+  ipi_sit_trib: string | null
+  pis_sit_trib: string | null
+  cofins_sit_trib: string | null
+  // Joined relations
+  nfe_headers?: NFEHeader
+  categories?: { code: string; description: string }
 }
+
+// ============================================
+// UI/DISPLAY TYPES
+// ============================================
 
 // Project option for filter dropdown
 export interface ProjectOption {
@@ -142,13 +185,12 @@ export interface ProjectOption {
   name: string
 }
 
-// Page Props
+// Page Props - Shared props for all pages
 export interface PageProps {
   timeRange: string
   setTimeRange: (range: string) => void
   customDates: { start: string; end: string }
   setCustomDates: (dates: { start: string; end: string }) => void
-  // Project filter
   selectedProject: string
   setSelectedProject: (projectId: string) => void
   projects: ProjectOption[]
@@ -176,6 +218,7 @@ export interface StackedChartData {
   [key: string]: string | number
 }
 
+// Tax Analysis Data
 export interface TaxAnalysisData {
   inss: number
   fgts: number
@@ -198,7 +241,7 @@ export interface TaxAnalysisData {
   diferenca: number
 }
 
-// Dashboard specific
+// Dashboard Data
 export interface DashboardData {
   totalCost: number
   itemCount: number
@@ -208,7 +251,7 @@ export interface DashboardData {
   catData: CategoryChart[]
   stackedData: StackedChartData[]
   allCategories: string[]
-  recentItems: FinancialTransaction[]
+  recentItems: AccountPayable[]
   paymentTypeData: CategoryChart[]
   avgMonthlyCost: number
   taxAnalysis: TaxAnalysisData
@@ -218,8 +261,8 @@ export interface DashboardData {
 export interface AggregatedItem {
   key: string
   product_description: string
-  department_id: string
-  department_name: string
+  project_code: string
+  project_name: string
   category_description: string
   total_value: number
   quantity: number
@@ -229,6 +272,7 @@ export interface AggregatedItem {
   document_numbers: string[]
 }
 
+// Sort Config
 export interface SortConfig {
   key: string
   direction: 'asc' | 'desc'
@@ -242,7 +286,7 @@ export interface KPICardProps {
   isCurrency?: boolean
 }
 
-// Tooltip props for recharts - using flexible types to match recharts' internal types
+// Tooltip props for recharts
 export interface TooltipEntry {
   name?: string
   value: number
@@ -256,37 +300,29 @@ export interface CustomTooltipProps {
   label?: string
 }
 
-// Receipts - Contas a Receber
-export interface Receipt {
-  codigo_lancamento: number
-  codigo_projeto: number
-  nome_obra: string
-  codigo_cliente: number
-  numero_documento: string
-  tipo_documento: string
-  categoria: string
-  valor_documento: number
-  status: string
-  data_emissao: string
-  data_vencimento: string
-  data_previsao: string
+// ============================================
+// STATUS CONSTANTS
+// ============================================
 
-  // Impostos
-  retem_ir: boolean
-  valor_ir: number
-  retem_iss: boolean
-  valor_iss: number
-  retem_inss: boolean
-  valor_inss: number
-  total_impostos: number
+export const STATUS_TITULO = {
+  LIQUIDADO: 'LIQUIDADO',
+  ABERTO: 'ABERTO',
+  CANCELADO: 'CANCELADO',
+  ATRASADO: 'ATRASADO',
+  RECEBIDO: 'RECEBIDO',
+} as const
 
-  // Parcelamento
-  parcela_atual: number
-  total_parcelas: number
-  is_parcelado: boolean
-  valor_parcela: number
+export const DOCUMENT_TYPES = {
+  NFE: 'NFE',
+  NFS: 'NFS',
+  BOL: 'BOL',
+  REC: 'REC',
+  PIX: 'PIX',
+  TED: 'TED',
+  DIN: 'DIN',
+} as const
 
-  // Auditoria
-  created_at: string
-  updated_at: string
-}
+export const NATUREZA = {
+  ENTRADA: 'E',
+  SAIDA: 'S',
+} as const

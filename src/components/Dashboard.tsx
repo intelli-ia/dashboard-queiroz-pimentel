@@ -28,7 +28,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
-import type { PageProps, FinancialTransaction, ChartDataPoint, DepartmentChart, CategoryChart, StackedChartData, KPICardProps, CustomTooltipProps, TooltipEntry, DashboardData, TaxAnalysisData } from '@/types'
+import type { PageProps, AccountPayable, ChartDataPoint, DepartmentChart, CategoryChart, StackedChartData, KPICardProps, CustomTooltipProps, TooltipEntry, DashboardData, TaxAnalysisData } from '@/types'
 import { ptBR } from 'date-fns/locale'
 
 const formatCurrency = (value: number) => {
@@ -44,25 +44,17 @@ const formatNumber = (value: number) => {
     return new Intl.NumberFormat('pt-BR').format(value);
 }
 
-const paymentTypeLabels: Record<string, string> = {
+const documentTypeLabels: Record<string, string> = {
     'NFE': 'Notas Fiscais (NFE)',
-    'NFS': 'Serviços (NFS)',
-    'FPGT': 'Folha de Pagamento',
-    'CTR': 'Contratos',
+    'NFS': 'Servicos (NFS)',
+    'BOL': 'Boleto Bancario',
     'REC': 'Recibos',
-    'REE': 'Reembolsos',
-    'BOL': 'Boleto Bancário',
-    'CTE': 'Frete (CTE)',
-    'DANFE': 'Nota Fiscal',
-    'RET': 'Retenções',
-    'ADI': 'Adiantamentos',
+    'PIX': 'PIX',
+    'TED': 'Transferencia TED',
+    'DIN': 'Dinheiro',
+    'CTR': 'Contratos',
     'FAT': 'Faturas',
-    'NFAV': 'Nota Avulsa',
-    'NLOC': 'Locação',
-    'GRRF': 'Encargos (GRRF)',
-    'GFD': 'Guia de Impostos',
-    'CF': 'Cupom Fiscal',
-    '99999': 'Outros'
+    'CTE': 'Frete (CTE)',
 }
 
 const renderActiveShape = (props: any) => {
@@ -131,239 +123,189 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd');
             }
 
-            // 1. Fetch Receipts (New requirement)
-            let receiptsQuery = supabase
-                .from('receipts')
-                .select('valor_documento, codigo_projeto, data_vencimento')
+            // 1. Fetch Accounts Receivable (Contas a Receber)
+            let receivablesQuery = supabase
+                .from('accounts_receivable')
+                .select('valor_documento, project_code, data_vencimento, status_titulo')
                 .gte('data_vencimento', startDate)
                 .lte('data_vencimento', endDate)
 
             if (selectedProject) {
-                receiptsQuery = receiptsQuery.eq('codigo_projeto', parseInt(selectedProject))
+                receivablesQuery = receivablesQuery.eq('project_code', selectedProject)
             }
 
-            const { data: receiptsData } = await receiptsQuery
-            const totalReceipts = receiptsData?.reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0) || 0
+            const { data: receivablesData } = await receivablesQuery
+            const totalReceipts = receivablesData?.reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0) || 0
 
-            // 2. Fetch financial movements (movimentações financeiras) as the main data source
-            // We use or() to capture movements where EITHER issue_date, due_date or payment_date falls in range
-            // This is safer for "Cash Basis" analysis
+            // 2. Fetch Accounts Payable (Contas a Pagar) - Main data source
             let query = supabase
-                .from('financial_movements')
+                .from('accounts_payable')
                 .select(`
-                    title_id,
-                    invoice_key,
-                    invoice_number,
-                    supplier_tax_id,
-                    supplier_name,
-                    category_id,
-                    project_id,
-                    status,
-                    is_paid,
-                    issue_date,
-                    due_date,
-                    payment_date,
-                    original_amount,
-                    paid_amount,
-                    net_amount,
-                    installment_label,
-                    description,
-                    title_name,
-                    payment_type,
-                    projects (code, name),
-                    categories (code, description, standard_description)
+                    codigo_lancamento_omie,
+                    codigo_cliente_fornecedor,
+                    project_code,
+                    category_code,
+                    document_type,
+                    numero_documento,
+                    numero_documento_fiscal,
+                    current_installment,
+                    total_installments,
+                    data_emissao,
+                    data_entrada,
+                    data_previsao,
+                    data_vencimento,
+                    status_titulo,
+                    valor_documento,
+                    retem_cofins,
+                    retem_csll,
+                    retem_inss,
+                    retem_ir,
+                    retem_iss,
+                    retem_pis,
+                    valor_inss,
+                    valor_ir,
+                    valor_iss,
+                    projects:project_code (code, name),
+                    categories:category_code (code, description)
                 `)
-                .or(`issue_date.gte.${startDate},due_date.gte.${startDate},payment_date.gte.${startDate}`)
-                .or(`issue_date.lte.${endDate},due_date.lte.${endDate},payment_date.lte.${endDate}`)
+                .gte('data_vencimento', startDate)
+                .lte('data_vencimento', endDate)
 
             if (selectedProject) {
-                query = query.eq('project_id', selectedProject)
+                query = query.eq('project_code', selectedProject)
             }
 
-            const rawItems = await fetchAll<any>(query.order('issue_date', { ascending: false }))
+            const rawItems = await fetchAll<AccountPayable>(query.order('data_vencimento', { ascending: false }))
 
-            console.log('Dashboard raw items (financial_movements):', rawItems)
+            console.log('Dashboard raw items (accounts_payable):', rawItems)
 
-            // Map to FinancialTransaction for UI compatibility - Cash Basis Logic
-            const items: FinancialTransaction[] = rawItems?.map(item => {
-                // Primary date for Cash Basis is payment_date (if paid) or due_date (if open)
-                const cashDate = item.is_paid ? (item.payment_date || item.due_date) : (item.due_date || item.issue_date);
-                const transactionDate = cashDate || item.issue_date;
-
-                // Final filter check to ensure we only show items that "move money" in the selected period
-                if (transactionDate < startDate || transactionDate > endDate) return null;
-
-                // Determine a friendly name for the transaction
-                let transactionName = ''
-                if (item.title_name) {
-                    transactionName = item.title_name
-                } else if (item.supplier_name) {
-                    transactionName = item.supplier_name
-                } else if (item.description) {
-                    transactionName = item.description
-                } else {
-                    transactionName = item.installment_label
-                        ? `Título: ${item.invoice_number || item.title_id} (${item.installment_label})`
-                        : `Título: ${item.invoice_number || item.title_id}`
-                }
-
-                return {
-                    id: item.title_id,
-                    transaction_date: transactionDate,
-                    transaction_name: transactionName,
-                    total_value: Number(item.net_amount) || Number(item.original_amount) || Number(item.paid_amount) || 0,
-                    quantity_received: 1,
-                    department_id: item.project_id,
-                    superior_category: item.category_id,
-                    supplier_name: item.supplier_name,
-                    description: item.description,
-                    departments: item.projects ? { name: item.projects.name } : undefined,
-                    projects: item.projects ? { name: item.projects.name } : undefined,
-                    categories: {
-                        category_description: item.categories?.description || item.categories?.standard_description || 'Outros',
-                        name: item.categories?.description || item.categories?.standard_description
-                    }
-                }
-            }).filter((item): item is NonNullable<typeof item> => item !== null) || []
-
-            if (items) {
+            if (rawItems) {
                 // Calculate Totals
-                const totalCost = items.reduce((acc, item) => acc + (Number(item.total_value) || 0), 0)
-                const itemCount = items.length
-                const avgTicket = itemCount > 0 ? totalCost / itemCount : 0
+                const totalCost = rawItems.reduce((acc, item) => acc + (Number(item.valor_documento) || 0), 0)
+                const itemCount = rawItems.length
 
                 // Process Monthly Avg
-                const monthMap = new Map()
-                items.forEach(item => {
-                    const month = item.transaction_date?.substring(0, 7) // YYYY-MM
+                const monthMap = new Map<string, number>()
+                rawItems.forEach(item => {
+                    const month = item.data_vencimento?.substring(0, 7) // YYYY-MM
                     if (!month) return
-                    const val = Number(item.total_value) || 0
+                    const val = Number(item.valor_documento) || 0
                     monthMap.set(month, (monthMap.get(month) || 0) + val)
                 })
                 const monthlyValues = Array.from(monthMap.values())
                 const avgMonthlyCost = monthlyValues.length > 0
                     ? monthlyValues.reduce((a, b) => a + b, 0) / monthlyValues.length
-                    : totalCost // If only one partial month or no full month info, fallback to totalCost or 0
+                    : totalCost
 
                 // Process Trend Data (Group by Date)
-                const trendMap = new Map()
-                items.forEach(item => {
-                    const date = item.transaction_date
+                const trendMap = new Map<string, number>()
+                rawItems.forEach(item => {
+                    const date = item.data_vencimento
                     if (!date) return
-                    const val = Number(item.total_value) || 0
+                    const val = Number(item.valor_documento) || 0
                     trendMap.set(date, (trendMap.get(date) || 0) + val)
                 })
-                const trendData = Array.from(trendMap.entries())
+                const trendData: ChartDataPoint[] = Array.from(trendMap.entries())
                     .map(([date, value]) => ({ date, value }))
                     .sort((a, b) => a.date.localeCompare(b.date))
 
-                // Process Dept Data
-                const deptMap = new Map()
-                items.forEach(item => {
-                    const deptName = item.departments?.name || 'Não Informado'
-                    const val = Number(item.total_value) || 0
+                // Process Dept Data (Project)
+                const deptMap = new Map<string, number>()
+                rawItems.forEach(item => {
+                    const deptName = item.projects?.name || 'Nao Informado'
+                    const val = Number(item.valor_documento) || 0
                     deptMap.set(deptName, (deptMap.get(deptName) || 0) + val)
                 })
-                const deptData = Array.from(deptMap.entries())
+                const deptData: DepartmentChart[] = Array.from(deptMap.entries())
                     .map(([name, value]) => ({ name, value }))
                     .sort((a, b) => b.value - a.value)
 
                 // Process Category Data
-                const catMap = new Map()
-                items.forEach(item => {
-                    const catName = item.categories?.category_description || 'Outros'
-                    const val = Number(item.total_value) || 0
+                const catMap = new Map<string, number>()
+                rawItems.forEach(item => {
+                    const catName = item.categories?.description || 'Outros'
+                    const val = Number(item.valor_documento) || 0
                     catMap.set(catName, (catMap.get(catName) || 0) + val)
                 })
-                const catData = Array.from(catMap.entries())
+                const catData: CategoryChart[] = Array.from(catMap.entries())
                     .map(([name, value]) => ({ name, value }))
                     .sort((a, b) => b.value - a.value)
                     .slice(0, 5)
 
-                // Process Stacked Data (Category per Department)
-                const stackedMap = new Map()
+                // Process Stacked Data (Category per Project)
+                const stackedMap = new Map<string, StackedChartData>()
                 const categorySet = new Set<string>()
 
-                // Specific Aggregations for new charts
-                const payTypeMap = new Map()
+                // Payment Type Aggregation
+                const payTypeMap = new Map<string, number>()
 
-                items.forEach(item => {
-                    const deptName = item.departments?.name || 'Não Informado'
-                    const catName = item.categories?.category_description || 'Outros'
-                    const val = Number(item.total_value) || 0
+                rawItems.forEach(item => {
+                    const deptName = item.projects?.name || 'Nao Informado'
+                    const catName = item.categories?.description || 'Outros'
+                    const val = Number(item.valor_documento) || 0
 
                     if (!stackedMap.has(deptName)) {
                         stackedMap.set(deptName, { name: deptName, total: 0 })
                     }
-                    const deptObj = stackedMap.get(deptName)
-                    deptObj[catName] = (deptObj[catName] || 0) + val
+                    const deptObj = stackedMap.get(deptName)!
+                    deptObj[catName] = ((deptObj[catName] as number) || 0) + val
                     deptObj.total += val
                     categorySet.add(catName)
 
-                    // Payment Type Aggregation (NFE, NFS, etc)
-                    // We assume paymentType is stored in item since we fetched it or can deduce it
-                    // Actually, rawItems has payment_type, let's make sure it's in the mapped item
+                    // Document Type Aggregation
+                    const docTypeCode = item.document_type || 'Outros'
+                    const docTypeLabel = documentTypeLabels[docTypeCode] || docTypeCode
+                    payTypeMap.set(docTypeLabel, (payTypeMap.get(docTypeLabel) || 0) + val)
                 })
 
-                // Note: I need to ensure payment_type and status are in the mapped items or re-loop rawItems
-                // Let's re-run the aggregation more cleanly
-                rawItems?.forEach(item => {
-                    // We need these metrics for the period-filtered items only
-                    const cashDate = item.is_paid ? (item.payment_date || item.due_date) : (item.due_date || item.issue_date);
-                    const transactionDate = cashDate || item.issue_date;
-                    if (transactionDate < startDate || transactionDate > endDate) return;
-
-                    const val = Number(item.net_amount) || Number(item.original_amount) || Number(item.paid_amount) || 0
-
-                    const pTypeCode = item.payment_type || 'Outros'
-                    const pTypeLabel = paymentTypeLabels[pTypeCode] || pTypeCode
-                    payTypeMap.set(pTypeLabel, (payTypeMap.get(pTypeLabel) || 0) + val)
-                })
-
-                const paymentTypeData = Array.from(payTypeMap.entries())
+                const paymentTypeData: CategoryChart[] = Array.from(payTypeMap.entries())
                     .map(([name, value]) => ({ name, value }))
                     .sort((a, b) => b.value - a.value)
 
                 const allCategories = Array.from(categorySet).sort()
-                const stackedData = Array.from(stackedMap.values())
+                const stackedData: StackedChartData[] = Array.from(stackedMap.values())
                     .sort((a, b) => b.total - a.total)
 
-                // Tax Analysis Calculations
+                // Tax Analysis Calculations - Using actual values from the database
+                const totalInss = rawItems.reduce((acc, item) => acc + (Number(item.valor_inss) || 0), 0)
+                const totalIr = rawItems.reduce((acc, item) => acc + (Number(item.valor_ir) || 0), 0)
+                const totalIss = rawItems.reduce((acc, item) => acc + (Number(item.valor_iss) || 0), 0)
+
+                // Estimated values based on retention flags
                 const valorBrutoNF = totalReceipts
-                const pis = valorBrutoNF * 0.0065
-                const cofins = valorBrutoNF * 0.03
-                const csll = valorBrutoNF * 0.028
-                const ir = valorBrutoNF * 0.015
-                const iss = valorBrutoNF * 0.035 // Estimated average
-                const inss = valorBrutoNF * 0.012 // Estimated average
+                const itemsWithPis = rawItems.filter(i => i.retem_pis)
+                const pis = itemsWithPis.reduce((acc, i) => acc + (Number(i.valor_documento) || 0) * 0.0065, 0)
+                const itemsWithCofins = rawItems.filter(i => i.retem_cofins)
+                const cofins = itemsWithCofins.reduce((acc, i) => acc + (Number(i.valor_documento) || 0) * 0.03, 0)
+                const itemsWithCsll = rawItems.filter(i => i.retem_csll)
+                const csll = itemsWithCsll.reduce((acc, i) => acc + (Number(i.valor_documento) || 0) * 0.028, 0)
+
                 const fgts = valorBrutoNF * 0.002 // Estimated average
 
-                const totalEncargos = inss + fgts + ir + iss + pis + cofins + csll
+                const totalEncargos = totalInss + fgts + totalIr + totalIss + pis + cofins + csll
 
-                // Other metrics (estimations based on existing cost data where possible)
-                const valorReajuste = 0 // Placeholder
+                // Other metrics
+                const valorReajuste = 0
                 const valorLiquidoNF = valorBrutoNF + valorReajuste
-                const valorContrato = valorBrutoNF * 1.05 // Example: 5% more than current receipts
+                const valorContrato = valorBrutoNF * 1.05
                 const saldoContrato = valorContrato - valorBrutoNF
-                const fornecedoresAberto = items.filter(i => {
-                    // We need to look at rawItems for is_paid, but mapped items don't have it easily
-                    // This is a simplified logic for now
-                    return false
-                }).reduce((acc, curr) => acc + curr.total_value, 0)
 
-                // The screenshot shows: DESPESAS + ENCARGOS + EM ABERTO = CUSTO
-                // We'll use totalCost as "DESPESAS"
-                const maquinasEquipamentos = 0 // Placeholder
+                // Open items (ABERTO status)
+                const fornecedoresAberto = rawItems
+                    .filter(i => i.status_titulo === 'ABERTO')
+                    .reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0)
+
+                const maquinasEquipamentos = 0
                 const custosFinanceiros = valorBrutoNF * 0.06
                 const escritorioCentral = valorBrutoNF * 0.04
                 const custoTotal = totalCost + totalEncargos + custosFinanceiros + escritorioCentral
                 const diferenca = custoTotal - valorLiquidoNF
 
                 const taxAnalysis: TaxAnalysisData = {
-                    inss,
+                    inss: totalInss,
                     fgts,
-                    ir,
-                    iss,
+                    ir: totalIr,
+                    iss: totalIss,
                     pis,
                     cofins,
                     csll,
@@ -390,7 +332,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     catData,
                     stackedData,
                     allCategories,
-                    recentItems: items.slice(0, 10),
+                    recentItems: rawItems.slice(0, 10),
                     paymentTypeData,
                     avgMonthlyCost,
                     taxAnalysis
@@ -442,7 +384,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     isCurrency
                 />
                 <KPICard
-                    title="Movimentações"
+                    title="Movimentacoes"
                     value={data?.itemCount || 0}
                     icon={<LayoutGrid className="w-5 h-5 text-indigo-500" />}
                 />
@@ -453,7 +395,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     isCurrency
                 />
                 <KPICard
-                    title="Custo Médio Mensal"
+                    title="Custo Medio Mensal"
                     value={data?.avgMonthlyCost || 0}
                     icon={<BarChart3 className="w-5 h-5 text-pink-500" />}
                     isCurrency
@@ -466,7 +408,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                     <div className="flex items-center justify-between">
                         <h3 className="font-semibold text-lg flex items-center gap-2">
                             <BarChart3 className="w-5 h-5 text-primary-app" />
-                            Evolução de Gastos
+                            Evolucao de Gastos
                         </h3>
                     </div>
                     <div className="h-[350px] w-full">
@@ -513,7 +455,7 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 1. Categorias (Donut) */}
                 <div className="glass p-6 rounded-2xl space-y-6">
-                    <h3 className="font-semibold text-lg">Distribuição por Categoria</h3>
+                    <h3 className="font-semibold text-lg">Distribuicao por Categoria</h3>
                     <div className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
@@ -713,7 +655,6 @@ export default function Dashboard({ timeRange, setTimeRange, customDates, setCus
                                         fill={COLORS[idx % COLORS.length]}
                                         radius={idx === data.allCategories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                                     >
-                                        {/* Optional: Add percentage labels inside bars if space permits */}
                                     </Bar>
                                 ))}
                             </BarChart>
@@ -792,9 +733,9 @@ function TaxAnalysisSummary({ data }: { data: TaxAnalysisData }) {
                         <div className="p-2 bg-primary-app/20 rounded-lg">
                             <BarChart3 className="w-6 h-6 text-primary-app" />
                         </div>
-                        Análise de Impostos e Tarifas
+                        Analise de Impostos e Tarifas
                     </h3>
-                    <p className="text-muted-foreground mt-1">Detalhamento fiscal e financeiro do período</p>
+                    <p className="text-muted-foreground mt-1">Detalhamento fiscal e financeiro do periodo</p>
                 </div>
                 <div className="bg-white/5 px-4 py-2 rounded-xl border border-white/5">
                     <span className="text-sm text-muted-foreground">Status: </span>
@@ -840,7 +781,7 @@ function TaxAnalysisSummary({ data }: { data: TaxAnalysisData }) {
                             <div className="flex justify-between items-center">
                                 <span className="text-sm text-muted-foreground">CUSTO - VALOR RECEBIDO</span>
                                 <div className="px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20">
-                                    <span className="text-[10px] font-bold text-emerald-500 uppercase">Diferença</span>
+                                    <span className="text-[10px] font-bold text-emerald-500 uppercase">Diferenca</span>
                                 </div>
                             </div>
                             <div className="text-3xl font-black text-white tabular-nums">
@@ -860,13 +801,13 @@ function TaxAnalysisSummary({ data }: { data: TaxAnalysisData }) {
                     <div className="space-y-2">
                         <MetricRow label="VALOR BRUTO NF" value={data.valorBrutoNF} />
                         <MetricRow label="VALOR REAJUSTE" value={data.valorReajuste} />
-                        <MetricRow label="VALOR LÍQUIDO/RECEBIDO NF" value={data.valorLiquidoNF} isHighlight />
+                        <MetricRow label="VALOR LIQUIDO/RECEBIDO NF" value={data.valorLiquidoNF} isHighlight />
                         <MetricRow label="VALOR DO CONTRATO" value={data.valorContrato} />
                         <MetricRow label="SALDO DO CONTRATO/A MEDIR" value={data.saldoContrato} isNegative />
                         <MetricRow label="FORNECEDORES EM ABERTO" value={data.fornecedoresAberto} />
-                        <MetricRow label="MÁQUINAS E EQUIPAMENTOS" value={data.maquinasEquipamentos} />
+                        <MetricRow label="MAQUINAS E EQUIPAMENTOS" value={data.maquinasEquipamentos} />
                         <MetricRow label="CUSTOS FINANCEIROS - 6%" value={data.custosFinanceiros} />
-                        <MetricRow label="ESCRITÓRIO CENTRAL - 4%" value={data.escritorioCentral} />
+                        <MetricRow label="ESCRITORIO CENTRAL - 4%" value={data.escritorioCentral} />
                     </div>
                 </div>
             </div>

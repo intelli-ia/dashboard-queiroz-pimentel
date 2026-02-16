@@ -6,13 +6,27 @@ import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
 import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, X } from 'lucide-react'
 import GlobalFilterBar from './GlobalFilterBar'
-import type { PageProps } from '@/types'
+import type { PageProps, NFEItem } from '@/types'
 
-type SortField = 'display_date' | 'supplier_tax_id' | 'supplier_legal_name' | 'category_name' | 'invoice_number' | 'project_name' | 'product_description' | 'total_item_value'
+type SortField = 'display_date' | 'cpf_cnpj' | 'razao_social' | 'category_description' | 'numero_nfe' | 'project_name' | 'descricao_produto' | 'valor_total'
 type SortDirection = 'asc' | 'desc' | null
 
+interface MappedItem {
+    id: string
+    descricao_produto: string | null
+    valor_total: number
+    quantidade: number | null
+    numero_nfe: string | null
+    cpf_cnpj: string | null
+    razao_social: string | null
+    project_name: string
+    category_description: string
+    data_emissao: string | null
+    display_date: string
+}
+
 export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
-    const [items, setItems] = useState<any[]>([])
+    const [items, setItems] = useState<MappedItem[]>([])
     const [loading, setLoading] = useState(true)
 
     // Sorting state
@@ -22,13 +36,13 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
     // Filter state
     const [filters, setFilters] = useState<Record<string, string>>({
         display_date: '',
-        supplier_tax_id: '',
-        supplier_legal_name: '',
-        category_name: '',
-        invoice_number: '',
+        cpf_cnpj: '',
+        razao_social: '',
+        category_description: '',
+        numero_nfe: '',
         project_name: '',
-        product_description: '',
-        total_item_value: ''
+        descricao_produto: '',
+        valor_total: ''
     })
 
     const fetchItems = useCallback(async () => {
@@ -54,138 +68,76 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
             }
 
-            console.log('Fetching items from', startDate, 'to', endDate)
+            console.log('Fetching NFE items from', startDate, 'to', endDate)
 
-            // Step 1: Fetch relevant financial movements (installments) within date range for "Cash Basis"
-            let movementsQuery = supabase
-                .from('financial_movements')
-                .select('invoice_key, is_paid, payment_date, due_date, issue_date, project_id')
-                .eq('payment_type', 'NFE')
+            // Query nfe_items with join to nfe_headers
+            let query = supabase
+                .from('nfe_items')
+                .select(`
+                    id_item,
+                    id_recebimento,
+                    descricao_produto,
+                    valor_total,
+                    quantidade,
+                    sequencia,
+                    category_code,
+                    nfe_headers!inner (
+                        id_recebimento,
+                        cpf_cnpj,
+                        nome_fantasia,
+                        razao_social,
+                        numero_nfe,
+                        data_emissao,
+                        valor_nfe,
+                        project_code,
+                        projects:project_code (code, name)
+                    ),
+                    categories:category_code (code, description)
+                `)
+                .gte('nfe_headers.data_emissao', startDate)
+                .lte('nfe_headers.data_emissao', endDate)
 
             if (selectedProject) {
-                movementsQuery = movementsQuery.eq('project_id', selectedProject)
+                query = query.eq('nfe_headers.project_code', selectedProject)
             }
 
-            movementsQuery = movementsQuery
-                .or(`issue_date.gte.${startDate},due_date.gte.${startDate},payment_date.gte.${startDate}`)
-                .or(`issue_date.lte.${endDate},due_date.lte.${endDate},payment_date.lte.${endDate}`)
+            query = query.order('id_item', { ascending: false })
 
-            const movementsData = await fetchAll<any>(movementsQuery)
+            const rawItems = await fetchAll<NFEItem>(query)
+            console.log('NFE items fetched:', rawItems?.length || 0, 'records')
 
-            // Identify which invoices have "cash action" in this period
-            const validInvoiceKeys = Array.from(new Set(movementsData?.map(m => {
-                const cashDate = m.is_paid ? (m.payment_date || m.due_date) : (m.due_date || m.issue_date);
-                const displayDate = cashDate || m.issue_date;
-                if (displayDate >= startDate && displayDate <= endDate) return m.invoice_key;
-                return null;
-            }).filter(Boolean)))
-
-            if (validInvoiceKeys.length === 0) {
-                setItems([])
-                return
-            }
-
-            // Step 2: Fetch purchases for these keys
-            const purchasesQuery = supabase
-                .from('purchases')
-                .select(`
-                    invoice_key,
-                    invoice_number,
-                    supplier_tax_id,
-                    supplier_legal_name,
-                    issue_date,
-                    invoice_total_amount,
-                    projects:project_id (name),
-                    categories:purchase_category (description)
-                `)
-                .in('invoice_key', validInvoiceKeys)
-
-            const purchasesData = await fetchAll<any>(purchasesQuery)
-            console.log('Relevant purchases fetched:', purchasesData?.length || 0)
-
-            const invoiceKeys = validInvoiceKeys
-
-            // Step 2: Fetch items for these purchases
-            const itemsQuery = supabase
-                .from('purchase_items')
-                .select(`
-                    item_sequence,
-                    product_description,
-                    total_item_value,
-                    invoice_key
-                `)
-                .in('invoice_key', invoiceKeys)
-
-            const rawItems = await fetchAll<any>(itemsQuery)
-            console.log('Items fetched:', rawItems?.length || 0, 'records')
-
-            // Step 3: Fetch financial movements for these purchases
-            const paymentsQuery = supabase
-                .from('financial_movements')
-                .select(`
-                    invoice_key,
-                    payment_date,
-                    is_paid,
-                    net_amount,
-                    original_amount,
-                    payment_type
-                `)
-                .in('invoice_key', invoiceKeys)
-                .eq('payment_type', 'NFE')
-
-            const paymentsData = await fetchAll<any>(paymentsQuery)
-            console.log('Payment data fetched:', paymentsData?.length || 0, 'records')
-
-            // Step 4: Map data
-            const purchasesMap = new Map()
-            purchasesData.forEach(p => purchasesMap.set(p.invoice_key, p))
-
-            const paymentsMap = new Map<string, any[]>()
-            paymentsData?.forEach(payment => {
-                if (payment.invoice_key) {
-                    const existing = paymentsMap.get(payment.invoice_key) || []
-                    existing.push(payment)
-                    paymentsMap.set(payment.invoice_key, existing)
+            // Map data for display
+            const mappedData: MappedItem[] = rawItems?.map(item => {
+                const header = item.nfe_headers as unknown as {
+                    id_recebimento: number
+                    cpf_cnpj: string | null
+                    nome_fantasia: string | null
+                    razao_social: string | null
+                    numero_nfe: string | null
+                    data_emissao: string | null
+                    valor_nfe: number | null
+                    project_code: string | null
+                    projects: { code: string; name: string } | null
                 }
-            })
-
-            const mergedData = rawItems?.map(item => {
-                const invoice = purchasesMap.get(item.invoice_key)
-                if (!invoice) return null
-
-                const payments = paymentsMap.get(item.invoice_key) || []
-
-                // If we want strict filtering by payment_type NFE, we skip items with no NFE movements
-                if (payments.length === 0) return null
-
-                const anyPaid = payments.some(p => p.is_paid)
-                const latestPaymentDate = payments
-                    .filter(p => p.payment_date)
-                    .sort((a: any, b: any) => b.payment_date.localeCompare(a.payment_date))[0]?.payment_date
-
-                const netTotal = payments.reduce((sum, p) => sum + (Number(p.net_amount) || Number(p.original_amount) || 0), 0)
 
                 return {
-                    id: `${item.invoice_key}-${item.item_sequence}`,
-                    product_description: item.product_description,
-                    total_item_value: item.total_item_value,
-                    invoice_number: invoice.invoice_number,
-                    supplier_tax_id: invoice.supplier_tax_id,
-                    supplier_legal_name: invoice.supplier_legal_name,
-                    project_name: invoice.projects?.name,
-                    category_name: invoice.categories?.description,
-                    issue_date: invoice.issue_date,
-                    payment_date: latestPaymentDate || null,
-                    is_paid: anyPaid,
-                    display_date: latestPaymentDate || invoice.issue_date,
-                    net_total: netTotal || invoice.invoice_total_amount || 0
+                    id: `${item.id_recebimento}-${item.id_item}`,
+                    descricao_produto: item.descricao_produto,
+                    valor_total: Number(item.valor_total) || 0,
+                    quantidade: item.quantidade,
+                    numero_nfe: header?.numero_nfe,
+                    cpf_cnpj: header?.cpf_cnpj,
+                    razao_social: header?.razao_social || header?.nome_fantasia,
+                    project_name: header?.projects?.name || 'N/A',
+                    category_description: item.categories?.description || 'N/A',
+                    data_emissao: header?.data_emissao,
+                    display_date: header?.data_emissao || ''
                 }
-            }).filter((item): item is NonNullable<typeof item> => item !== null) || []
+            }) || []
 
-            console.log('Merged items sample:', mergedData[0])
-            setItems(mergedData)
+            setItems(mappedData)
         } catch (err) {
-            console.error('Error fetching items:', err)
+            console.error('Error fetching NFE items:', err)
         } finally {
             setLoading(false)
         }
@@ -198,7 +150,6 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
     // Handle sorting
     const handleSort = (field: SortField) => {
         if (sortField === field) {
-            // Cycle through: asc -> desc -> null
             if (sortDirection === 'asc') {
                 setSortDirection('desc')
             } else if (sortDirection === 'desc') {
@@ -232,9 +183,9 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
                     let fieldValue = ''
 
                     if (field === 'display_date') {
-                        fieldValue = format(parseISO(item.display_date), 'dd/MM/yyyy')
+                        fieldValue = item.display_date ? format(parseISO(item.display_date), 'dd/MM/yyyy') : ''
                     } else {
-                        fieldValue = String(item[field] || '')
+                        fieldValue = String((item as Record<string, unknown>)[field] || '')
                     }
 
                     return fieldValue.toLowerCase().includes(value.toLowerCase())
@@ -245,14 +196,11 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
         // Apply sorting
         if (sortField && sortDirection) {
             result.sort((a, b) => {
-                let aValue: any
-                let bValue: any
-
-                aValue = a[sortField]
-                bValue = b[sortField]
+                let aValue: string | number = (a as Record<string, unknown>)[sortField] as string | number
+                let bValue: string | number = (b as Record<string, unknown>)[sortField] as string | number
 
                 // Handle numeric sorting
-                if (sortField === 'total_item_value') {
+                if (sortField === 'valor_total') {
                     aValue = Number(aValue) || 0
                     bValue = Number(bValue) || 0
                 }
@@ -308,26 +256,26 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
                                     </th>
                                     {/* CNPJ/CPF */}
                                     <th className="px-4 py-3 text-left w-40">
-                                        <button onClick={() => handleSort('supplier_tax_id')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            CNPJ/CPF <SortIcon field="supplier_tax_id" />
+                                        <button onClick={() => handleSort('cpf_cnpj')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
+                                            CNPJ/CPF <SortIcon field="cpf_cnpj" />
                                         </button>
                                     </th>
                                     {/* Razão Social */}
                                     <th className="px-4 py-3 text-left w-48">
-                                        <button onClick={() => handleSort('supplier_legal_name')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Razão Social <SortIcon field="supplier_legal_name" />
+                                        <button onClick={() => handleSort('razao_social')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
+                                            Razão Social <SortIcon field="razao_social" />
                                         </button>
                                     </th>
                                     {/* Categoria */}
                                     <th className="px-4 py-3 text-left w-40">
-                                        <button onClick={() => handleSort('category_name')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Categoria <SortIcon field="category_name" />
+                                        <button onClick={() => handleSort('category_description')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
+                                            Categoria <SortIcon field="category_description" />
                                         </button>
                                     </th>
                                     {/* Número da Nota */}
                                     <th className="px-4 py-3 text-left w-24">
-                                        <button onClick={() => handleSort('invoice_number')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Nº Nota <SortIcon field="invoice_number" />
+                                        <button onClick={() => handleSort('numero_nfe')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
+                                            Nº Nota <SortIcon field="numero_nfe" />
                                         </button>
                                     </th>
                                     {/* Projeto */}
@@ -338,14 +286,14 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
                                     </th>
                                     {/* Descrição do Item */}
                                     <th className="px-4 py-3 text-left min-w-[200px]">
-                                        <button onClick={() => handleSort('product_description')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Descrição do Item <SortIcon field="product_description" />
+                                        <button onClick={() => handleSort('descricao_produto')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
+                                            Descrição do Item <SortIcon field="descricao_produto" />
                                         </button>
                                     </th>
                                     {/* Valor */}
                                     <th className="px-4 py-3 text-right w-32">
-                                        <button onClick={() => handleSort('total_item_value')} className="flex items-center gap-2 ml-auto text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Valor <SortIcon field="total_item_value" />
+                                        <button onClick={() => handleSort('valor_total')} className="flex items-center gap-2 ml-auto text-sm font-semibold hover:text-primary-app transition-colors">
+                                            Valor <SortIcon field="valor_total" />
                                         </button>
                                     </th>
                                 </tr>
@@ -354,13 +302,13 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
                                 <tr className="bg-muted-app/30">
                                     {[
                                         'display_date',
-                                        'supplier_tax_id',
-                                        'supplier_legal_name',
-                                        'category_name',
-                                        'invoice_number',
+                                        'cpf_cnpj',
+                                        'razao_social',
+                                        'category_description',
+                                        'numero_nfe',
                                         'project_name',
-                                        'product_description',
-                                        'total_item_value'
+                                        'descricao_produto',
+                                        'valor_total'
                                     ].map((field) => (
                                         <th key={field} className="px-4 py-2">
                                             <div className="relative">
@@ -401,38 +349,31 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
                                             className="border-b border-border-app/50 hover:bg-muted-app/30 transition-colors"
                                         >
                                             <td className="px-4 py-3 text-sm">
-                                                <div className="flex items-center gap-2">
-                                                    <span>{format(parseISO(item.display_date), 'dd/MM/yyyy')}</span>
-                                                    {item.payment_date && item.payment_date !== item.issue_date && (
-                                                        <span className="text-xs text-green-500" title={`Emissão: ${format(parseISO(item.issue_date), 'dd/MM/yyyy')}`}>
-                                                            💰
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                {item.display_date ? format(parseISO(item.display_date), 'dd/MM/yyyy') : '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-sm font-mono truncate max-w-[150px]" title={item.supplier_tax_id}>
-                                                {item.supplier_tax_id || '-'}
+                                            <td className="px-4 py-3 text-sm font-mono truncate max-w-[150px]" title={item.cpf_cnpj || ''}>
+                                                {item.cpf_cnpj || '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-sm truncate max-w-[200px]" title={item.supplier_legal_name}>
-                                                {item.supplier_legal_name || '-'}
+                                            <td className="px-4 py-3 text-sm truncate max-w-[200px]" title={item.razao_social || ''}>
+                                                {item.razao_social || '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-sm truncate max-w-[150px]" title={item.category_name}>
-                                                {item.category_name || '-'}
+                                            <td className="px-4 py-3 text-sm truncate max-w-[150px]" title={item.category_description}>
+                                                {item.category_description || '-'}
                                             </td>
                                             <td className="px-4 py-3 text-sm font-mono">
-                                                {item.invoice_number || '-'}
+                                                {item.numero_nfe || '-'}
                                             </td>
                                             <td className="px-4 py-3 text-sm truncate max-w-[150px]" title={item.project_name}>
                                                 {item.project_name || '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-sm truncate max-w-[300px]" title={item.product_description}>
-                                                {item.product_description || '-'}
+                                            <td className="px-4 py-3 text-sm truncate max-w-[300px]" title={item.descricao_produto || ''}>
+                                                {item.descricao_produto || '-'}
                                             </td>
                                             <td className="px-4 py-3 text-sm text-right font-semibold">
                                                 {new Intl.NumberFormat('pt-BR', {
                                                     style: 'currency',
                                                     currency: 'BRL'
-                                                }).format(item.total_item_value || 0)}
+                                                }).format(item.valor_total || 0)}
                                             </td>
                                         </tr>
                                     ))
@@ -450,7 +391,7 @@ export default function NFEDetailsPage({ timeRange, setTimeRange, customDates, s
                                 Total: {new Intl.NumberFormat('pt-BR', {
                                     style: 'currency',
                                     currency: 'BRL'
-                                }).format(filteredAndSortedItems.reduce((sum, item) => sum + (item.total_item_value || 0), 0))}
+                                }).format(filteredAndSortedItems.reduce((sum, item) => sum + (item.valor_total || 0), 0))}
                             </span>
                         </div>
                     )}

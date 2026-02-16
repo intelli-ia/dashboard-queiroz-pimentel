@@ -25,7 +25,12 @@ import {
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
-import type { PageProps, FinancialTransaction, Department, Category, AggregatedItem, SortConfig } from '@/types'
+import type { PageProps, AggregatedItem, SortConfig, Category, NFEItem } from '@/types'
+
+interface ProjectOption {
+    code: string
+    name: string
+}
 
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -41,13 +46,13 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
     const [loading, setLoading] = useState(true)
     const [distinctProducts, setDistinctProducts] = useState<string[]>([])
     const [categories, setCategories] = useState<Category[]>([])
-    const [departments, setDepartments] = useState<Department[]>([])
+    const [projectsList, setProjectsList] = useState<ProjectOption[]>([])
 
     // Filters
     const [productSearchTerm, setProductSearchTerm] = useState('')
     const [selectedProduct, setSelectedProduct] = useState('')
     const [selectedCategory, setSelectedCategory] = useState('')
-    const [selectedDepartment, setSelectedDepartment] = useState('')
+    const [selectedProject, setSelectedProject] = useState('')
     const [customSearch, setCustomSearch] = useState('')
 
     // Sort State
@@ -63,18 +68,18 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
 
     const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false)
     const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false)
-    const [isDepartmentDropdownOpen, setIsDepartmentDropdownOpen] = useState(false)
+    const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false)
 
     // Refs for outside click detection
     const productDropdownRef = useRef<HTMLDivElement>(null)
     const categoryDropdownRef = useRef<HTMLDivElement>(null)
-    const departmentDropdownRef = useRef<HTMLDivElement>(null)
+    const projectDropdownRef = useRef<HTMLDivElement>(null)
 
     // Helper to close all dropdowns
     const closeAllDropdowns = useCallback(() => {
         setIsProductDropdownOpen(false)
         setIsCategoryDropdownOpen(false)
-        setIsDepartmentDropdownOpen(false)
+        setIsProjectDropdownOpen(false)
         setActiveFilterColumn(null)
     }, [])
 
@@ -84,7 +89,7 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
             if (
                 productDropdownRef.current && !productDropdownRef.current.contains(event.target as Node) &&
                 categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node) &&
-                departmentDropdownRef.current && !departmentDropdownRef.current.contains(event.target as Node) &&
+                projectDropdownRef.current && !projectDropdownRef.current.contains(event.target as Node) &&
                 filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)
             ) {
                 closeAllDropdowns()
@@ -96,42 +101,37 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
 
     const fetchInitialData = useCallback(async () => {
         try {
-            // Fetch distinct product names
+            // Fetch distinct product names from nfe_items
             const { data: products } = await supabase
-                .from('purchase_items')
-                .select('product_description')
-                .order('product_description')
+                .from('nfe_items')
+                .select('descricao_produto')
+                .order('descricao_produto')
 
             if (products) {
-                const unique = Array.from(new Set(products.map(p => p.product_description).filter(Boolean)))
+                const unique = Array.from(new Set(products.map(p => p.descricao_produto).filter(Boolean)))
                 setDistinctProducts(unique as string[])
             }
 
             // Fetch categories
             const { data: cats } = await supabase
                 .from('categories')
-                .select('*')
+                .select('code, description, standard_description')
                 .order('description')
 
             if (cats) setCategories(cats.map(c => ({
-                ...c,
-                id: c.code,
-                category_code: c.code,
-                category_description: c.description || c.standard_description
+                code: c.code,
+                parent_code: null,
+                description: c.description || c.standard_description || '',
+                standard_description: c.standard_description
             })))
 
             // Fetch projects
             const { data: projs } = await supabase
                 .from('projects')
-                .select('*')
+                .select('code, name')
                 .order('name')
 
-            if (projs) setDepartments(projs.map(p => ({
-                id: p.code,
-                name: p.name,
-                omie_department_id: p.code,
-                is_active: true
-            })))
+            if (projs) setProjectsList(projs)
         } catch (err) {
             console.error('Error fetching initial data:', err)
         }
@@ -159,52 +159,66 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
             }
 
             let query = supabase
-                .from('purchase_items')
+                .from('nfe_items')
                 .select(`
-                    *,
-                    purchases!inner (
-                        issue_date,
-                        project_id,
-                        invoice_key,
-                        purchase_category,
-                        projects (code, name),
-                        categories (code, description, standard_description)
-                    )
+                    id_item,
+                    id_recebimento,
+                    descricao_produto,
+                    valor_total,
+                    quantidade,
+                    category_code,
+                    nfe_headers!inner (
+                        id_recebimento,
+                        data_emissao,
+                        project_code,
+                        numero_nfe,
+                        chave_nfe,
+                        projects:project_code (code, name)
+                    ),
+                    categories:category_code (code, description, standard_description)
                 `)
-                .gte('purchases.issue_date', startDate)
-                .lte('purchases.issue_date', endDate)
+                .gte('nfe_headers.data_emissao', startDate)
+                .lte('nfe_headers.data_emissao', endDate)
 
             // Custom search takes precedence over specific product selection
             if (customSearch) {
-                query = query.ilike('product_description', `%${customSearch}%`)
+                query = query.ilike('descricao_produto', `%${customSearch}%`)
             } else if (selectedProduct) {
-                query = query.eq('product_description', selectedProduct)
+                query = query.eq('descricao_produto', selectedProduct)
             }
 
             if (selectedCategory) {
-                query = query.eq('purchases.purchase_category', selectedCategory)
+                query = query.eq('category_code', selectedCategory)
             }
 
-            if (selectedDepartment) {
-                query = query.eq('purchases.project_id', selectedDepartment)
+            if (selectedProject) {
+                query = query.eq('nfe_headers.project_code', selectedProject)
             }
 
-            const data = await fetchAll<any>(query.order('issue_date', { foreignTable: 'purchases', ascending: false }))
+            const data = await fetchAll<NFEItem>(query.order('id_item', { ascending: false }))
 
             console.log('ItemsPage raw data:', data)
 
             // Aggregate data by Product + Project
             if (data) {
-                const aggregated = data.reduce((acc: AggregatedItem[], item: any) => {
-                    const invoice = item.purchases
-                    const productDesc = item.product_description || 'Sem descrição'
-                    const projectId = invoice?.project_id || 'no_proj'
-                    const key = `${productDesc}_${projectId}`
+                const aggregated = data.reduce((acc: AggregatedItem[], item) => {
+                    const header = item.nfe_headers as unknown as {
+                        id_recebimento: number
+                        data_emissao: string | null
+                        project_code: string | null
+                        numero_nfe: string | null
+                        chave_nfe: string | null
+                        projects: { code: string; name: string } | null
+                    }
+
+                    const productDesc = item.descricao_produto || 'Sem descrição'
+                    const projectCode = header?.project_code || 'no_proj'
+                    const key = `${productDesc}_${projectCode}`
                     const existing = acc.find(a => a.key === key)
 
-                    const itemValue = Number(item.total_item_value) || 0
-                    const itemQty = Number(item.quantity) || 0
-                    const issueDate = invoice?.issue_date
+                    const itemValue = Number(item.valor_total) || 0
+                    const itemQty = Number(item.quantidade) || 0
+                    const issueDate = header?.data_emissao
 
                     if (existing) {
                         existing.total_value += itemValue
@@ -213,22 +227,24 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                         if (issueDate && issueDate > existing.latest_date) {
                             existing.latest_date = issueDate
                         }
-                        if (invoice?.invoice_key && !existing.document_numbers.includes(invoice.invoice_key)) {
-                            existing.document_numbers.push(invoice.invoice_key)
+                        const docNumber = header?.numero_nfe || header?.chave_nfe
+                        if (docNumber && !existing.document_numbers.includes(docNumber)) {
+                            existing.document_numbers.push(docNumber)
                         }
                     } else {
+                        const docNumber = header?.numero_nfe || header?.chave_nfe
                         acc.push({
                             key,
                             product_description: productDesc,
-                            department_id: projectId,
-                            department_name: invoice?.projects?.name || '-',
-                            category_description: invoice?.categories?.description || invoice?.categories?.standard_description || 'Outros',
+                            project_code: projectCode,
+                            project_name: header?.projects?.name || '-',
+                            category_description: item.categories?.description || 'Outros',
                             total_value: itemValue,
                             quantity: itemQty,
                             occurrences: 1,
                             latest_date: issueDate || '',
                             unit_value: itemQty > 0 ? (itemValue / itemQty) : 0,
-                            document_numbers: invoice?.invoice_key ? [invoice.invoice_key] : []
+                            document_numbers: docNumber ? [docNumber] : []
                         })
                     }
 
@@ -260,7 +276,7 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
         } finally {
             setLoading(false)
         }
-    }, [selectedProduct, selectedCategory, selectedDepartment, customSearch, timeRange, customDates, sortConfig])
+    }, [selectedProduct, selectedCategory, selectedProject, customSearch, timeRange, customDates, sortConfig])
 
     useEffect(() => {
         fetchInitialData()
@@ -471,7 +487,7 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                             >
                                 <span className={selectedCategory ? 'text-foreground-app' : 'text-muted-foreground'}>
                                     {selectedCategory
-                                        ? categories.find(c => c.category_code === selectedCategory)?.category_description
+                                        ? categories.find(c => c.code === selectedCategory)?.description
                                         : 'Todas categorias'}
                                 </span>
                                 <ChevronDown className={`w-4 h-4 transition-transform ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
@@ -509,39 +525,39 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                         }}
                                         className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 last:border-0 ${selectedCategory === cat.code ? 'bg-primary-app/10 text-primary-app' : ''}`}
                                     >
-                                        {cat.category_description}
+                                        {cat.description}
                                     </button>
                                 ))}
                             </div>
                         )}
                     </div>
 
-                    {/* Department Select */}
-                    <div className="space-y-2 relative" ref={departmentDropdownRef}>
+                    {/* Project Select */}
+                    <div className="space-y-2 relative" ref={projectDropdownRef}>
                         <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                            <Filter className="w-4 h-4" /> Departamento
+                            <Filter className="w-4 h-4" /> Projeto
                         </label>
                         <div className="relative">
                             <button
                                 onClick={() => {
-                                    const newState = !isDepartmentDropdownOpen
+                                    const newState = !isProjectDropdownOpen
                                     closeAllDropdowns()
-                                    setIsDepartmentDropdownOpen(newState)
+                                    setIsProjectDropdownOpen(newState)
                                 }}
                                 className="w-full bg-muted-app border border-border-app rounded-xl px-4 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-primary-app transition-all text-left flex items-center justify-between"
                             >
-                                <span className={selectedDepartment ? 'text-foreground-app' : 'text-muted-foreground'}>
-                                    {selectedDepartment
-                                        ? departments.find(d => d.omie_department_id === selectedDepartment)?.name
-                                        : 'Todos departamentos'}
+                                <span className={selectedProject ? 'text-foreground-app' : 'text-muted-foreground'}>
+                                    {selectedProject
+                                        ? projectsList.find(p => p.code === selectedProject)?.name
+                                        : 'Todos projetos'}
                                 </span>
-                                <ChevronDown className={`w-4 h-4 transition-transform ${isDepartmentDropdownOpen ? 'rotate-180' : ''}`} />
+                                <ChevronDown className={`w-4 h-4 transition-transform ${isProjectDropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
-                            {selectedDepartment && (
+                            {selectedProject && (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation()
-                                        setSelectedDepartment('')
+                                        setSelectedProject('')
                                     }}
                                     className="absolute right-10 top-1/2 -translate-y-1/2 p-1 hover:bg-white/10 rounded-full z-10"
                                 >
@@ -550,27 +566,27 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                             )}
                         </div>
 
-                        {isDepartmentDropdownOpen && (
+                        {isProjectDropdownOpen && (
                             <div className="absolute top-full left-0 right-0 mt-2 bg-card-app border border-border-app rounded-xl shadow-2xl z-[100] max-h-60 overflow-y-auto custom-scrollbar">
                                 <button
                                     onClick={() => {
-                                        setSelectedDepartment('')
-                                        setIsDepartmentDropdownOpen(false)
+                                        setSelectedProject('')
+                                        setIsProjectDropdownOpen(false)
                                     }}
-                                    className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 ${!selectedDepartment ? 'bg-primary-app/10 text-primary-app' : ''}`}
+                                    className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 ${!selectedProject ? 'bg-primary-app/10 text-primary-app' : ''}`}
                                 >
-                                    Todos departamentos
+                                    Todos projetos
                                 </button>
-                                {departments.map((dept) => (
+                                {projectsList.map((proj) => (
                                     <button
-                                        key={dept.id}
+                                        key={proj.code}
                                         onClick={() => {
-                                            setSelectedDepartment(dept.omie_department_id)
-                                            setIsDepartmentDropdownOpen(false)
+                                            setSelectedProject(proj.code)
+                                            setIsProjectDropdownOpen(false)
                                         }}
-                                        className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 last:border-0 ${selectedDepartment === dept.omie_department_id ? 'bg-primary-app/10 text-primary-app' : ''}`}
+                                        className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 last:border-0 ${selectedProject === proj.code ? 'bg-primary-app/10 text-primary-app' : ''}`}
                                     >
-                                        {dept.name}
+                                        {proj.name}
                                     </button>
                                 ))}
                             </div>
@@ -760,32 +776,32 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                         </div>
                                     </div>
                                 </th>
-                                {/* Departamento */}
+                                {/* Projeto */}
                                 <th className="px-6 py-4 font-medium">
                                     <div className="flex items-center gap-2">
-                                        <span onClick={() => handleSort('department_name')} className="cursor-pointer hover:text-white transition-colors flex items-center gap-1">
-                                            Departamento
-                                            {sortConfig.key === 'department_name' && <ChevronDown className={`w-4 h-4 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />}
+                                        <span onClick={() => handleSort('project_name')} className="cursor-pointer hover:text-white transition-colors flex items-center gap-1">
+                                            Projeto
+                                            {sortConfig.key === 'project_name' && <ChevronDown className={`w-4 h-4 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />}
                                         </span>
                                         <div className="relative ml-auto">
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); setActiveFilterColumn(activeFilterColumn === 'department_name' ? null : 'department_name') }}
-                                                className={`p-1 rounded hover:bg-white/10 transition-colors ${columnFilters['department_name'] ? 'text-primary-app' : 'text-muted-foreground'}`}
+                                                onClick={(e) => { e.stopPropagation(); setActiveFilterColumn(activeFilterColumn === 'project_name' ? null : 'project_name') }}
+                                                className={`p-1 rounded hover:bg-white/10 transition-colors ${columnFilters['project_name'] ? 'text-primary-app' : 'text-muted-foreground'}`}
                                             >
                                                 <Filter className="w-3 h-3" />
                                             </button>
-                                            {activeFilterColumn === 'department_name' && (
+                                            {activeFilterColumn === 'project_name' && (
                                                 <div className="absolute top-full right-0 mt-2 bg-card-app border border-border-app rounded-xl shadow-2xl z-50 p-3 min-w-[200px]">
                                                     <input
                                                         type="text"
                                                         placeholder="Filtrar..."
-                                                        value={columnFilters['department_name'] || ''}
-                                                        onChange={(e) => handleColumnFilter('department_name', e.target.value)}
+                                                        value={columnFilters['project_name'] || ''}
+                                                        onChange={(e) => handleColumnFilter('project_name', e.target.value)}
                                                         className="w-full bg-muted-app border border-border-app rounded-lg px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary-app"
                                                         autoFocus
                                                     />
-                                                    {columnFilters['department_name'] && (
-                                                        <button onClick={() => clearColumnFilter('department_name')} className="mt-2 text-xs text-red-400 hover:text-red-300">Limpar</button>
+                                                    {columnFilters['project_name'] && (
+                                                        <button onClick={() => clearColumnFilter('project_name')} className="mt-2 text-xs text-red-400 hover:text-red-300">Limpar</button>
                                                     )}
                                                 </div>
                                             )}
@@ -862,29 +878,6 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                             Qtd. Total
                                             {sortConfig.key === 'quantity' && <ChevronDown className={`w-4 h-4 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />}
                                         </span>
-                                        <div className="relative">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setActiveFilterColumn(activeFilterColumn === 'quantity' ? null : 'quantity') }}
-                                                className={`p-1 rounded hover:bg-white/10 transition-colors ${columnFilters['quantity'] ? 'text-primary-app' : 'text-muted-foreground'}`}
-                                            >
-                                                <Filter className="w-3 h-3" />
-                                            </button>
-                                            {activeFilterColumn === 'quantity' && (
-                                                <div className="absolute top-full right-0 mt-2 bg-card-app border border-border-app rounded-xl shadow-2xl z-50 p-3 min-w-[200px]">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Filtrar..."
-                                                        value={columnFilters['quantity'] || ''}
-                                                        onChange={(e) => handleColumnFilter('quantity', e.target.value)}
-                                                        className="w-full bg-muted-app border border-border-app rounded-lg px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary-app"
-                                                        autoFocus
-                                                    />
-                                                    {columnFilters['quantity'] && (
-                                                        <button onClick={() => clearColumnFilter('quantity')} className="mt-2 text-xs text-red-400 hover:text-red-300">Limpar</button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
                                     </div>
                                 </th>
                                 {/* Nº Compras */}
@@ -894,29 +887,6 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                             Nº Compras
                                             {sortConfig.key === 'occurrences' && <ChevronDown className={`w-4 h-4 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />}
                                         </span>
-                                        <div className="relative">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setActiveFilterColumn(activeFilterColumn === 'occurrences' ? null : 'occurrences') }}
-                                                className={`p-1 rounded hover:bg-white/10 transition-colors ${columnFilters['occurrences'] ? 'text-primary-app' : 'text-muted-foreground'}`}
-                                            >
-                                                <Filter className="w-3 h-3" />
-                                            </button>
-                                            {activeFilterColumn === 'occurrences' && (
-                                                <div className="absolute top-full right-0 mt-2 bg-card-app border border-border-app rounded-xl shadow-2xl z-50 p-3 min-w-[200px]">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Filtrar..."
-                                                        value={columnFilters['occurrences'] || ''}
-                                                        onChange={(e) => handleColumnFilter('occurrences', e.target.value)}
-                                                        className="w-full bg-muted-app border border-border-app rounded-lg px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary-app"
-                                                        autoFocus
-                                                    />
-                                                    {columnFilters['occurrences'] && (
-                                                        <button onClick={() => clearColumnFilter('occurrences')} className="mt-2 text-xs text-red-400 hover:text-red-300">Limpar</button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
                                     </div>
                                 </th>
                                 {/* Última Compra */}
@@ -926,29 +896,6 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                             Última Compra
                                             {sortConfig.key === 'latest_date' && <ChevronDown className={`w-4 h-4 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />}
                                         </span>
-                                        <div className="relative">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setActiveFilterColumn(activeFilterColumn === 'latest_date' ? null : 'latest_date') }}
-                                                className={`p-1 rounded hover:bg-white/10 transition-colors ${columnFilters['latest_date'] ? 'text-primary-app' : 'text-muted-foreground'}`}
-                                            >
-                                                <Filter className="w-3 h-3" />
-                                            </button>
-                                            {activeFilterColumn === 'latest_date' && (
-                                                <div className="absolute top-full right-0 mt-2 bg-card-app border border-border-app rounded-xl shadow-2xl z-50 p-3 min-w-[200px]">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Filtrar..."
-                                                        value={columnFilters['latest_date'] || ''}
-                                                        onChange={(e) => handleColumnFilter('latest_date', e.target.value)}
-                                                        className="w-full bg-muted-app border border-border-app rounded-lg px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary-app"
-                                                        autoFocus
-                                                    />
-                                                    {columnFilters['latest_date'] && (
-                                                        <button onClick={() => clearColumnFilter('latest_date')} className="mt-2 text-xs text-red-400 hover:text-red-300">Limpar</button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
                                     </div>
                                 </th>
                                 {/* Valor Total */}
@@ -958,29 +905,6 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                             Valor Total
                                             {sortConfig.key === 'total_value' && <ChevronDown className={`w-4 h-4 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />}
                                         </span>
-                                        <div className="relative">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setActiveFilterColumn(activeFilterColumn === 'total_value' ? null : 'total_value') }}
-                                                className={`p-1 rounded hover:bg-white/10 transition-colors ${columnFilters['total_value'] ? 'text-primary-app' : 'text-muted-foreground'}`}
-                                            >
-                                                <Filter className="w-3 h-3" />
-                                            </button>
-                                            {activeFilterColumn === 'total_value' && (
-                                                <div className="absolute top-full right-0 mt-2 bg-card-app border border-border-app rounded-xl shadow-2xl z-50 p-3 min-w-[200px]">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Filtrar..."
-                                                        value={columnFilters['total_value'] || ''}
-                                                        onChange={(e) => handleColumnFilter('total_value', e.target.value)}
-                                                        className="w-full bg-muted-app border border-border-app rounded-lg px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary-app"
-                                                        autoFocus
-                                                    />
-                                                    {columnFilters['total_value'] && (
-                                                        <button onClick={() => clearColumnFilter('total_value')} className="mt-2 text-xs text-red-400 hover:text-red-300">Limpar</button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
                                     </div>
                                 </th>
                             </tr>
@@ -1002,7 +926,7 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                             {item.product_description}
                                         </td>
                                         <td className="px-6 py-4 text-muted-foreground">
-                                            {item.department_name}
+                                            {item.project_name}
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="px-2 py-1 rounded bg-secondary-app text-xs uppercase tracking-wider font-semibold">
@@ -1030,7 +954,7 @@ export default function ItemsPage({ timeRange, setTimeRange, customDates, setCus
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right text-muted-foreground tabular-nums">
-                                            {format(parseISO(item.latest_date), 'dd/MM/yyyy')}
+                                            {item.latest_date ? format(parseISO(item.latest_date), 'dd/MM/yyyy') : '-'}
                                         </td>
                                         <td className="px-6 py-4 text-right font-bold text-primary-app tabular-nums">
                                             {formatCurrency(item.total_value)}

@@ -7,13 +7,28 @@ import { format, subDays, parseISO } from 'date-fns'
 import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, X, BarChart3 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import GlobalFilterBar from './GlobalFilterBar'
-import type { PageProps } from '@/types'
+import type { PageProps, AccountPayable } from '@/types'
 
-type SortField = 'display_date' | 'supplier_tax_id' | 'supplier_legal_name' | 'purchase_category' | 'invoice_number' | 'project_name' | 'invoice_total_amount'
+type SortField = 'display_date' | 'numero_documento' | 'project_name' | 'category_description' | 'installment_label' | 'valor_documento'
 type SortDirection = 'asc' | 'desc' | null
 
+interface MappedInvoice {
+    id: number
+    numero_documento: string | null
+    numero_documento_fiscal: string | null
+    data_emissao: string | null
+    data_vencimento: string | null
+    display_date: string
+    valor_documento: number
+    project_name: string
+    category_description: string
+    is_paid: boolean
+    status_titulo: string | null
+    installment_label: string
+}
+
 export default function NFSPage({ timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
-    const [invoices, setInvoices] = useState<any[]>([])
+    const [invoices, setInvoices] = useState<MappedInvoice[]>([])
     const [loading, setLoading] = useState(true)
 
     // Sorting state
@@ -23,12 +38,11 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
     // Filter state
     const [filters, setFilters] = useState<Record<string, string>>({
         display_date: '',
-        supplier_tax_id: '',
-        supplier_legal_name: '',
-        purchase_category: '',
-        invoice_number: '',
+        numero_documento: '',
         project_name: '',
-        invoice_total_amount: ''
+        category_description: '',
+        installment_label: '',
+        valor_documento: ''
     })
 
     const fetchInvoices = useCallback(async () => {
@@ -54,79 +68,70 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
             }
 
-            console.log('Fetching NFS financial movements from', startDate, 'to', endDate)
+            console.log('Fetching NFS accounts_payable from', startDate, 'to', endDate)
 
-            // Query: Fetch financial movements as the primary source for "Cash Basis"
+            // Query accounts_payable with document_type = 'NFS'
             let query = supabase
-                .from('financial_movements')
+                .from('accounts_payable')
                 .select(`
-                    id,
-                    invoice_key,
-                    invoice_number,
-                    supplier_tax_id,
-                    supplier_name,
-                    category_id,
-                    project_id,
-                    status,
-                    is_paid,
-                    issue_date,
-                    due_date,
-                    payment_date,
-                    net_amount,
-                    original_amount,
-                    installment_label,
-                    payment_type,
-                    description,
-                    title_name,
-                    projects:project_id (name),
-                    categories:category_id (description)
+                    codigo_lancamento_omie,
+                    numero_documento,
+                    numero_documento_fiscal,
+                    project_code,
+                    category_code,
+                    current_installment,
+                    total_installments,
+                    data_emissao,
+                    data_vencimento,
+                    status_titulo,
+                    valor_documento,
+                    document_type,
+                    projects:project_code (code, name),
+                    categories:category_code (code, description)
                 `)
-                .eq('payment_type', 'NFS')
+                .eq('document_type', 'NFS')
 
             if (selectedProject) {
-                query = query.eq('project_id', selectedProject)
+                query = query.eq('project_code', selectedProject)
             }
 
             query = query
-                .or(`issue_date.gte.${startDate},due_date.gte.${startDate},payment_date.gte.${startDate}`)
-                .or(`issue_date.lte.${endDate},due_date.lte.${endDate},payment_date.lte.${endDate}`)
-                .order('issue_date', { ascending: false })
+                .gte('data_vencimento', startDate)
+                .lte('data_vencimento', endDate)
+                .order('data_vencimento', { ascending: false })
 
-            const rawMovements = await fetchAll<any>(query)
-            console.log('NFS movements fetched:', rawMovements?.length || 0, 'records')
+            const rawData = await fetchAll<AccountPayable>(query)
+            console.log('NFS accounts_payable fetched:', rawData?.length || 0, 'records')
 
             // Map data for display
-            const mappedData = rawMovements?.map(item => {
-                // Determine cash date (payment_date if paid, due_date if open)
-                const cashDate = item.is_paid ? (item.payment_date || item.due_date) : (item.due_date || item.issue_date);
-                const displayDate = cashDate || item.issue_date;
+            const mappedData: MappedInvoice[] = rawData?.map(item => {
+                const isPaid = item.status_titulo === 'LIQUIDADO'
+                const displayDate = item.data_vencimento || item.data_emissao || ''
 
-                // Range check
-                if (displayDate < startDate || displayDate > endDate) return null;
+                // Build installment label
+                const installmentLabel = item.total_installments > 1
+                    ? `${item.current_installment}/${item.total_installments}`
+                    : ''
 
                 return {
-                    id: item.id,
-                    invoice_key: item.invoice_key,
-                    invoice_number: item.invoice_number,
-                    issue_date: item.issue_date,
-                    due_date: item.due_date,
-                    payment_date: item.payment_date,
+                    id: item.codigo_lancamento_omie,
+                    numero_documento: item.numero_documento,
+                    numero_documento_fiscal: item.numero_documento_fiscal,
+                    data_emissao: item.data_emissao,
+                    data_vencimento: item.data_vencimento,
                     display_date: displayDate,
-                    supplier_tax_id: item.supplier_tax_id,
-                    supplier_legal_name: item.title_name || item.supplier_name || (item.description && !item.description.includes('NFS') ? item.description : 'N/A'),
-                    description: item.description,
-                    invoice_total_amount: Number(item.net_amount) || Number(item.original_amount) || 0,
+                    valor_documento: Number(item.valor_documento) || 0,
                     project_name: item.projects?.name || 'N/A',
-                    purchase_category: item.categories?.description || 'N/A',
-                    is_paid: item.is_paid,
-                    status: item.status,
-                    installment_label: item.installment_label
+                    category_description: item.categories?.description || 'N/A',
+                    is_paid: isPaid,
+                    status_titulo: item.status_titulo,
+                    installment_label: installmentLabel
                 }
-            }).filter((item): item is NonNullable<typeof item> => item !== null) || []
+            }) || []
 
             setInvoices(mappedData)
         } catch (err) {
-            console.error('Error fetching NFS financial data:', err)
+            console.error('Error fetching NFS data:', err)
         } finally {
             setLoading(false)
         }
@@ -136,7 +141,7 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
         fetchInvoices()
     }, [fetchInvoices])
 
-    // Filter and Sort Logic (reused from NFEPage)
+    // Filter and Sort Logic
     const handleSort = (field: SortField) => {
         if (sortField === field) {
             if (sortDirection === 'asc') setSortDirection('desc')
@@ -166,9 +171,9 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                 result = result.filter(invoice => {
                     let fieldValue = ''
                     if (field === 'display_date') {
-                        fieldValue = format(parseISO(invoice.display_date), 'dd/MM/yyyy')
+                        fieldValue = invoice.display_date ? format(parseISO(invoice.display_date), 'dd/MM/yyyy') : ''
                     } else {
-                        fieldValue = String(invoice[field] || '')
+                        fieldValue = String((invoice as Record<string, unknown>)[field] || '')
                     }
                     return fieldValue.toLowerCase().includes(value.toLowerCase())
                 })
@@ -177,9 +182,9 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
 
         if (sortField && sortDirection) {
             result.sort((a, b) => {
-                let aValue = a[sortField]
-                let bValue = b[sortField]
-                if (sortField === 'invoice_total_amount') {
+                let aValue: string | number = (a as Record<string, unknown>)[sortField] as string | number
+                let bValue: string | number = (b as Record<string, unknown>)[sortField] as string | number
+                if (sortField === 'valor_documento') {
                     aValue = Number(aValue) || 0
                     bValue = Number(bValue) || 0
                 }
@@ -192,7 +197,7 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
     }, [invoices, filters, sortField, sortDirection])
 
     const totalAmount = useMemo(() => {
-        return filteredAndSortedInvoices.reduce((sum, inv) => sum + (Number(inv.invoice_total_amount) || 0), 0)
+        return filteredAndSortedInvoices.reduce((sum, inv) => sum + (Number(inv.valor_documento) || 0), 0)
     }, [filteredAndSortedInvoices])
 
     const CHART_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316']
@@ -200,8 +205,8 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
     const categoryChartData = useMemo(() => {
         const categoryMap = new Map<string, number>()
         filteredAndSortedInvoices.forEach(inv => {
-            const cat = inv.purchase_category || 'Sem Categoria'
-            categoryMap.set(cat, (categoryMap.get(cat) || 0) + (Number(inv.invoice_total_amount) || 0))
+            const cat = inv.category_description || 'Sem Categoria'
+            categoryMap.set(cat, (categoryMap.get(cat) || 0) + (Number(inv.valor_documento) || 0))
         })
         return Array.from(categoryMap, ([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value)
@@ -324,23 +329,13 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                                         </button>
                                     </th>
                                     <th className="px-4 py-3 text-left">
-                                        <button onClick={() => handleSort('supplier_tax_id')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            CNPJ/CPF <SortIcon field="supplier_tax_id" />
-                                        </button>
-                                    </th>
-                                    <th className="px-4 py-3 text-left">
-                                        <button onClick={() => handleSort('supplier_legal_name')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Prestador / Descrição <SortIcon field="supplier_legal_name" />
+                                        <button onClick={() => handleSort('numero_documento')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
+                                            Nº Documento <SortIcon field="numero_documento" />
                                         </button>
                                     </th>
                                     <th className="px-4 py-3 text-left min-w-[220px]">
-                                        <button onClick={() => handleSort('purchase_category')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Categoria <SortIcon field="purchase_category" />
-                                        </button>
-                                    </th>
-                                    <th className="px-4 py-3 text-left">
-                                        <button onClick={() => handleSort('invoice_number')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Nº Nota <SortIcon field="invoice_number" />
+                                        <button onClick={() => handleSort('category_description')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
+                                            Categoria <SortIcon field="category_description" />
                                         </button>
                                     </th>
                                     <th className="px-4 py-3 text-left w-[120px]">
@@ -348,9 +343,14 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                                             Projeto <SortIcon field="project_name" />
                                         </button>
                                     </th>
+                                    <th className="px-4 py-3 text-left">
+                                        <button onClick={() => handleSort('installment_label')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
+                                            Parcela <SortIcon field="installment_label" />
+                                        </button>
+                                    </th>
                                     <th className="px-4 py-3 text-right w-[110px]">
-                                        <button onClick={() => handleSort('invoice_total_amount')} className="flex items-center gap-2 ml-auto text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Valor <SortIcon field="invoice_total_amount" />
+                                        <button onClick={() => handleSort('valor_documento')} className="flex items-center gap-2 ml-auto text-sm font-semibold hover:text-primary-app transition-colors">
+                                            Valor <SortIcon field="valor_documento" />
                                         </button>
                                     </th>
                                 </tr>
@@ -379,12 +379,12 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                                             <input
                                                 type="text"
                                                 placeholder="Filtrar..."
-                                                value={filters.supplier_tax_id}
-                                                onChange={(e) => handleFilterChange('supplier_tax_id', e.target.value)}
+                                                value={filters.numero_documento}
+                                                onChange={(e) => handleFilterChange('numero_documento', e.target.value)}
                                                 className="w-full pl-7 pr-6 py-1 text-xs bg-background/50 border border-border-app rounded focus:outline-none focus:ring-1 focus:ring-primary-app"
                                             />
-                                            {filters.supplier_tax_id && (
-                                                <button onClick={() => clearFilter('supplier_tax_id')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            {filters.numero_documento && (
+                                                <button onClick={() => clearFilter('numero_documento')} className="absolute right-2 top-1/2 -translate-y-1/2">
                                                     <X className="w-3 h-3 text-muted-foreground hover:text-foreground" />
                                                 </button>
                                             )}
@@ -396,46 +396,12 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                                             <input
                                                 type="text"
                                                 placeholder="Filtrar..."
-                                                value={filters.supplier_legal_name}
-                                                onChange={(e) => handleFilterChange('supplier_legal_name', e.target.value)}
+                                                value={filters.category_description}
+                                                onChange={(e) => handleFilterChange('category_description', e.target.value)}
                                                 className="w-full pl-7 pr-6 py-1 text-xs bg-background/50 border border-border-app rounded focus:outline-none focus:ring-1 focus:ring-primary-app"
                                             />
-                                            {filters.supplier_legal_name && (
-                                                <button onClick={() => clearFilter('supplier_legal_name')} className="absolute right-2 top-1/2 -translate-y-1/2">
-                                                    <X className="w-3 h-3 text-muted-foreground hover:text-foreground" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    </th>
-                                    <th className="px-4 py-2">
-                                        <div className="relative">
-                                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                                            <input
-                                                type="text"
-                                                placeholder="Filtrar..."
-                                                value={filters.purchase_category}
-                                                onChange={(e) => handleFilterChange('purchase_category', e.target.value)}
-                                                className="w-full pl-7 pr-6 py-1 text-xs bg-background/50 border border-border-app rounded focus:outline-none focus:ring-1 focus:ring-primary-app"
-                                            />
-                                            {filters.purchase_category && (
-                                                <button onClick={() => clearFilter('purchase_category')} className="absolute right-2 top-1/2 -translate-y-1/2">
-                                                    <X className="w-3 h-3 text-muted-foreground hover:text-foreground" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    </th>
-                                    <th className="px-4 py-2">
-                                        <div className="relative">
-                                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                                            <input
-                                                type="text"
-                                                placeholder="Filtrar..."
-                                                value={filters.invoice_number}
-                                                onChange={(e) => handleFilterChange('invoice_number', e.target.value)}
-                                                className="w-full pl-7 pr-6 py-1 text-xs bg-background/50 border border-border-app rounded focus:outline-none focus:ring-1 focus:ring-primary-app"
-                                            />
-                                            {filters.invoice_number && (
-                                                <button onClick={() => clearFilter('invoice_number')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            {filters.category_description && (
+                                                <button onClick={() => clearFilter('category_description')} className="absolute right-2 top-1/2 -translate-y-1/2">
                                                     <X className="w-3 h-3 text-muted-foreground hover:text-foreground" />
                                                 </button>
                                             )}
@@ -464,12 +430,29 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                                             <input
                                                 type="text"
                                                 placeholder="Filtrar..."
-                                                value={filters.invoice_total_amount}
-                                                onChange={(e) => handleFilterChange('invoice_total_amount', e.target.value)}
+                                                value={filters.installment_label}
+                                                onChange={(e) => handleFilterChange('installment_label', e.target.value)}
                                                 className="w-full pl-7 pr-6 py-1 text-xs bg-background/50 border border-border-app rounded focus:outline-none focus:ring-1 focus:ring-primary-app"
                                             />
-                                            {filters.invoice_total_amount && (
-                                                <button onClick={() => clearFilter('invoice_total_amount')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            {filters.installment_label && (
+                                                <button onClick={() => clearFilter('installment_label')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                                                    <X className="w-3 h-3 text-muted-foreground hover:text-foreground" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </th>
+                                    <th className="px-4 py-2">
+                                        <div className="relative">
+                                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                                            <input
+                                                type="text"
+                                                placeholder="Filtrar..."
+                                                value={filters.valor_documento}
+                                                onChange={(e) => handleFilterChange('valor_documento', e.target.value)}
+                                                className="w-full pl-7 pr-6 py-1 text-xs bg-background/50 border border-border-app rounded focus:outline-none focus:ring-1 focus:ring-primary-app"
+                                            />
+                                            {filters.valor_documento && (
+                                                <button onClick={() => clearFilter('valor_documento')} className="absolute right-2 top-1/2 -translate-y-1/2">
                                                     <X className="w-3 h-3 text-muted-foreground hover:text-foreground" />
                                                 </button>
                                             )}
@@ -480,7 +463,7 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                             <tbody>
                                 {filteredAndSortedInvoices.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                                             Nenhum registro encontrado.
                                         </td>
                                     </tr>
@@ -489,45 +472,30 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                                         <tr key={invoice.id} className="border-b border-border-app/50 hover:bg-muted-app/30 transition-colors">
                                             <td className="px-4 py-3 text-sm">
                                                 <div className="flex items-center gap-2">
-                                                    <span>{format(parseISO(invoice.display_date), 'dd/MM/yyyy')}</span>
+                                                    <span>{invoice.display_date ? format(parseISO(invoice.display_date), 'dd/MM/yyyy') : '-'}</span>
                                                     {invoice.is_paid && <span className="text-xs text-green-500">💰</span>}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 text-sm font-mono text-muted-foreground">
-                                                {invoice.supplier_tax_id || '-'}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm">
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium text-foreground-app">
-                                                        {invoice.supplier_legal_name}
-                                                    </span>
-                                                    {invoice.description && (
-                                                        <span className="text-[10px] text-muted-foreground line-clamp-1">
-                                                            {invoice.description}
-                                                        </span>
-                                                    )}
-                                                </div>
+                                            <td className="px-4 py-3 text-sm font-mono">
+                                                {invoice.numero_documento || invoice.numero_documento_fiscal || '-'}
                                             </td>
                                             <td className="px-4 py-3 text-sm">
                                                 <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-medium border border-blue-500/20">
-                                                    {invoice.purchase_category || '-'}
+                                                    {invoice.category_description || '-'}
                                                 </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-sm font-mono">
-                                                <div className="flex flex-col">
-                                                    <span>{invoice.invoice_number || '-'}</span>
-                                                    {invoice.installment_label && (
-                                                        <span className="text-[10px] text-primary-app font-bold uppercase tracking-wider">
-                                                            {invoice.installment_label}
-                                                        </span>
-                                                    )}
-                                                </div>
                                             </td>
                                             <td className="px-4 py-3 text-sm">
                                                 {invoice.project_name}
                                             </td>
+                                            <td className="px-4 py-3 text-sm">
+                                                {invoice.installment_label && (
+                                                    <span className="text-[10px] text-primary-app font-bold uppercase tracking-wider">
+                                                        {invoice.installment_label}
+                                                    </span>
+                                                )}
+                                            </td>
                                             <td className="px-4 py-3 text-sm text-right font-semibold">
-                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(invoice.invoice_total_amount || 0)}
+                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(invoice.valor_documento || 0)}
                                             </td>
                                         </tr>
                                     ))

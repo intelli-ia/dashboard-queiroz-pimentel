@@ -13,7 +13,17 @@ import { format, subDays, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
-import type { PageProps, FinancialTransaction } from '@/types'
+import type { PageProps, AccountPayable } from '@/types'
+
+interface MappedSalary {
+    id: number
+    transaction_date: string
+    transaction_name: string
+    total_value: number
+    project_name: string
+    category_description: string
+    installment_label: string
+}
 
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -26,7 +36,7 @@ const formatCurrency = (value: number) => {
 
 export default function SalariesPage({ timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
     const [searchTerm, setSearchTerm] = useState('')
-    const [salaries, setSalaries] = useState<FinancialTransaction[]>([])
+    const [salaries, setSalaries] = useState<MappedSalary[]>([])
     const [loading, setLoading] = useState(true)
 
     const fetchSalaries = useCallback(async () => {
@@ -50,37 +60,49 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
             }
 
-            // Fetch Salaries from purchases
-            // We search for "PAGAMENTO_PESSOAL" or similar in the invoice or category
-            // Note: Since we don't have a specific field, we'll try to find it in category name or invoice key for now
+            // Fetch salaries/payroll from accounts_payable
+            // Filtering by categories related to payroll (this would need actual category codes)
+            // For now, we'll use document types that might represent payroll: REC (Recibo), BOL, etc.
             const query = supabase
-                .from('purchases')
+                .from('accounts_payable')
                 .select(`
-                    *,
-                    projects (name),
-                    categories (name)
+                    codigo_lancamento_omie,
+                    numero_documento,
+                    project_code,
+                    category_code,
+                    current_installment,
+                    total_installments,
+                    data_emissao,
+                    data_vencimento,
+                    status_titulo,
+                    valor_documento,
+                    document_type,
+                    projects:project_code (code, name),
+                    categories:category_code (code, description)
                 `)
-                .or('invoice_key.ilike.%PAGAMENTO_PESSOAL%')
-                .gte('issue_date', startDate)
-                .lte('issue_date', endDate)
+                .in('document_type', ['REC', 'BOL', 'PIX', 'TED'])
+                .gte('data_vencimento', startDate)
+                .lte('data_vencimento', endDate)
+                .order('data_vencimento', { ascending: false })
 
-            const rawData = await fetchAll<any>(query.order('issue_date', { ascending: false }))
+            const rawData = await fetchAll<AccountPayable>(query)
 
             if (rawData) {
-                const mappedData: FinancialTransaction[] = rawData.map(item => ({
-                    id: item.invoice_key,
-                    transaction_date: item.issue_date,
-                    transaction_name: `Pagamento: ${item.invoice_key}`,
-                    total_value: item.invoice_total_amount || 0,
-                    quantity_received: 1,
-                    department_id: item.project_id,
-                    superior_category: item.purchase_category,
-                    departments: item.projects,
-                    categories: {
-                        category_description: item.categories?.name || 'Salários',
-                        name: item.categories?.name
+                const mappedData: MappedSalary[] = rawData.map(item => {
+                    const installmentLabel = item.total_installments > 1
+                        ? `${item.current_installment}/${item.total_installments}`
+                        : ''
+
+                    return {
+                        id: item.codigo_lancamento_omie,
+                        transaction_date: item.data_vencimento || item.data_emissao || '',
+                        transaction_name: `${item.document_type || 'Pagamento'}: ${item.numero_documento || item.codigo_lancamento_omie}`,
+                        total_value: Number(item.valor_documento) || 0,
+                        project_name: item.projects?.name || '-',
+                        category_description: item.categories?.description || 'Pagamentos',
+                        installment_label: installmentLabel
                     }
-                }))
+                })
                 setSalaries(mappedData)
             }
         } catch (err) {
@@ -98,12 +120,14 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
     const filteredSalaries = salaries.filter(item => {
         const matchesSearch = searchTerm === '' ||
             (item.transaction_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-            (item.departments?.name?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+            (item.project_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+            (item.category_description?.toLowerCase() || '').includes(searchTerm.toLowerCase())
 
         return matchesSearch
     })
 
     const totalFolha = filteredSalaries.reduce((acc, curr) => acc + (Number(curr.total_value) || 0), 0)
+    const uniqueProjects = new Set(filteredSalaries.map(s => s.project_name)).size
 
     return (
         <div className="p-6 md:p-8 space-y-8 animate-in fade-in duration-700 max-w-[1600px] mx-auto">
@@ -137,9 +161,9 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
                 <div className="glass p-6 rounded-2xl space-y-2">
                     <div className="flex items-center gap-2 text-emerald-400">
                         <Briefcase className="w-5 h-5" />
-                        <span className="font-medium">Departamentos</span>
+                        <span className="font-medium">Projetos</span>
                     </div>
-                    <div className="text-2xl font-bold">{new Set(filteredSalaries.map(s => s.department_id)).size}</div>
+                    <div className="text-2xl font-bold">{uniqueProjects}</div>
                     <div className="text-xs text-muted-foreground">Obras com alocação</div>
                 </div>
             </div>
@@ -150,11 +174,11 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
                     {/* Search */}
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                            <Search className="w-4 h-4" /> Buscar Nome / Cargo
+                            <Search className="w-4 h-4" /> Buscar
                         </label>
                         <input
                             type="text"
-                            placeholder="Nome..."
+                            placeholder="Nome, projeto ou categoria..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full bg-muted-app border border-border-app rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-app transition-all"
@@ -242,19 +266,20 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
                         <thead className="bg-white/5 text-muted-foreground border-b border-border-app">
                             <tr>
                                 <th className="px-6 py-4 font-medium">Data</th>
-                                <th className="px-6 py-4 font-medium">Descrição / Colaborador</th>
-                                <th className="px-6 py-4 font-medium">Departamento</th>
+                                <th className="px-6 py-4 font-medium">Descrição</th>
+                                <th className="px-6 py-4 font-medium">Categoria</th>
+                                <th className="px-6 py-4 font-medium">Projeto</th>
                                 <th className="px-6 py-4 font-medium">Mês Ref.</th>
-                                <th className="px-6 py-4 font-medium text-right font-bold text-foreground-app">Valor Líquido</th>
+                                <th className="px-6 py-4 font-medium text-right font-bold text-foreground-app">Valor</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-app">
                             {loading && salaries.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-20 text-center">
+                                    <td colSpan={6} className="px-6 py-20 text-center">
                                         <div className="flex flex-col items-center gap-3">
                                             <RefreshCcw className="w-8 h-8 animate-spin text-primary-app" />
-                                            <span className="text-muted-foreground">Buscando folha de pagamento...</span>
+                                            <span className="text-muted-foreground">Buscando pagamentos...</span>
                                         </div>
                                     </td>
                                 </tr>
@@ -262,18 +287,28 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
                                 filteredSalaries.map((item) => (
                                     <tr key={item.id} className="group hover:bg-white/5 transition-colors">
                                         <td className="px-6 py-4 text-muted-foreground">
-                                            {format(parseISO(item.transaction_date), 'dd/MM/yyyy')}
+                                            {item.transaction_date ? format(parseISO(item.transaction_date), 'dd/MM/yyyy') : '-'}
                                         </td>
                                         <td className="px-6 py-4 font-medium">
-                                            {item.transaction_name}
+                                            <div className="flex flex-col">
+                                                <span>{item.transaction_name}</span>
+                                                {item.installment_label && (
+                                                    <span className="text-[10px] text-primary-app font-bold uppercase tracking-wider">
+                                                        {item.installment_label}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="px-2 py-1 rounded bg-secondary-app text-xs uppercase tracking-wider font-semibold">
-                                                {item.departments?.name || '-'}
+                                                {item.category_description}
                                             </span>
                                         </td>
+                                        <td className="px-6 py-4">
+                                            <span className="text-muted-foreground">{item.project_name}</span>
+                                        </td>
                                         <td className="px-6 py-4 text-muted-foreground capitalize">
-                                            {format(parseISO(item.transaction_date), 'MMMM/yyyy', { locale: ptBR })}
+                                            {item.transaction_date ? format(parseISO(item.transaction_date), 'MMMM/yyyy', { locale: ptBR }) : '-'}
                                         </td>
                                         <td className="px-6 py-4 text-right font-bold text-primary-app tabular-nums">
                                             {formatCurrency(Number(item.total_value))}
@@ -282,8 +317,8 @@ export default function SalariesPage({ timeRange, setTimeRange, customDates, set
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-20 text-center text-muted-foreground font-medium">
-                                        Nenhum registro encontrado com o termo &quot;PAGAMENTO_PESSOAL&quot;.
+                                    <td colSpan={6} className="px-6 py-20 text-center text-muted-foreground font-medium">
+                                        Nenhum registro encontrado para o período selecionado.
                                     </td>
                                 </tr>
                             )}

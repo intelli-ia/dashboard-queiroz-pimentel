@@ -12,7 +12,18 @@ import {
 import { format, subDays, parseISO } from 'date-fns'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
-import type { PageProps, FinancialTransaction } from '@/types'
+import type { PageProps, AccountPayable } from '@/types'
+
+interface MappedService {
+    id: number
+    transaction_date: string
+    transaction_name: string
+    total_value: number
+    project_name: string
+    category_description: string
+    installment_label: string
+    status_titulo: string | null
+}
 
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -25,7 +36,7 @@ const formatCurrency = (value: number) => {
 
 export default function ServicesPage({ timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
     const [searchTerm, setSearchTerm] = useState('')
-    const [services, setServices] = useState<FinancialTransaction[]>([])
+    const [services, setServices] = useState<MappedService[]>([])
     const [loading, setLoading] = useState(true)
 
     const fetchServices = useCallback(async () => {
@@ -49,47 +60,49 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates, set
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
             }
 
-            // Fetch Services from purchases
-            // We join with categories to identify services.
-            // Since we don't know the exact service identifier in the new schema,
-            // we'll fetch all and assume the UI can handle it or we filter by category name.
-            let query = supabase
-                .from('purchases')
+            // Fetch Services from accounts_payable with document_type = 'NFS' (Nota Fiscal de Serviço)
+            const query = supabase
+                .from('accounts_payable')
                 .select(`
-                    invoice_key,
-                    invoice_number,
-                    issue_date,
-                    project_id,
-                    purchase_category,
-                    invoice_total_amount,
-                    supplier_legal_name,
-                    projects (code, name),
-                    categories (code, description, standard_description)
+                    codigo_lancamento_omie,
+                    numero_documento,
+                    numero_documento_fiscal,
+                    project_code,
+                    category_code,
+                    current_installment,
+                    total_installments,
+                    data_emissao,
+                    data_vencimento,
+                    status_titulo,
+                    valor_documento,
+                    document_type,
+                    projects:project_code (code, name),
+                    categories:category_code (code, description)
                 `)
-                .gte('issue_date', startDate)
-                .lte('issue_date', endDate)
+                .eq('document_type', 'NFS')
+                .gte('data_vencimento', startDate)
+                .lte('data_vencimento', endDate)
+                .order('data_vencimento', { ascending: false })
 
-            // Filtering for categories that might represent services
-            // This is a placeholder for the actual service filtering logic
-            // query = query.ilike('categories.name', '%Serviço%')
-
-            const rawData = await fetchAll<any>(query.order('issue_date', { ascending: false }))
+            const rawData = await fetchAll<AccountPayable>(query)
 
             if (rawData) {
-                const mappedData: FinancialTransaction[] = rawData.map(item => ({
-                    id: item.invoice_key,
-                    transaction_date: item.issue_date,
-                    transaction_name: item.supplier_legal_name || `NF: ${item.invoice_number || item.invoice_key}`,
-                    total_value: item.invoice_total_amount || 0,
-                    quantity_received: 1,
-                    department_id: item.project_id,
-                    superior_category: item.purchase_category,
-                    departments: item.projects,
-                    categories: {
-                        category_description: item.categories?.description || item.categories?.standard_description || 'Serviços',
-                        name: item.categories?.description
+                const mappedData: MappedService[] = rawData.map(item => {
+                    const installmentLabel = item.total_installments > 1
+                        ? `${item.current_installment}/${item.total_installments}`
+                        : ''
+
+                    return {
+                        id: item.codigo_lancamento_omie,
+                        transaction_date: item.data_vencimento || item.data_emissao || '',
+                        transaction_name: `NFS: ${item.numero_documento || item.numero_documento_fiscal || item.codigo_lancamento_omie}`,
+                        total_value: Number(item.valor_documento) || 0,
+                        project_name: item.projects?.name || '-',
+                        category_description: item.categories?.description || 'Serviços',
+                        installment_label: installmentLabel,
+                        status_titulo: item.status_titulo
                     }
-                }))
+                })
                 setServices(mappedData)
             }
         } catch (err) {
@@ -105,13 +118,12 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates, set
 
     const filteredServices = services.filter(service =>
         (service.transaction_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-        (service.departments?.name?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+        (service.project_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+        (service.category_description?.toLowerCase() || '').includes(searchTerm.toLowerCase())
     )
 
     const totalServices = filteredServices.reduce((acc, curr) => acc + (Number(curr.total_value) || 0), 0)
-
-    // Extract unique providers (using transaction name as proxy for provider since we don't have a specific column)
-    const uniqueProviders = new Set(filteredServices.map(s => s.transaction_name)).size
+    const uniqueCategories = new Set(filteredServices.map(s => s.category_description)).size
 
     return (
         <div className="p-6 md:p-8 space-y-8 animate-in fade-in duration-700 max-w-[1600px] mx-auto">
@@ -137,9 +149,9 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates, set
                 <div className="glass p-6 rounded-2xl space-y-2">
                     <div className="flex items-center gap-2 text-indigo-400">
                         <Building2 className="w-5 h-5" />
-                        <span className="font-medium">Serviços Distintos</span>
+                        <span className="font-medium">Categorias</span>
                     </div>
-                    <div className="text-2xl font-bold">{uniqueProviders}</div>
+                    <div className="text-2xl font-bold">{uniqueCategories}</div>
                     <div className="text-xs text-muted-foreground">Tipos de serviço contratados</div>
                 </div>
                 <div className="glass p-6 rounded-2xl space-y-2">
@@ -163,7 +175,7 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates, set
                     {/* Search */}
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                            <Search className="w-4 h-4" /> Buscar Serviço / Depto
+                            <Search className="w-4 h-4" /> Buscar Serviço / Projeto
                         </label>
                         <input
                             type="text"
@@ -257,14 +269,15 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates, set
                                 <th className="px-6 py-4 font-medium">Data</th>
                                 <th className="px-6 py-4 font-medium">Descrição</th>
                                 <th className="px-6 py-4 font-medium">Categoria</th>
-                                <th className="px-6 py-4 font-medium">Departamento</th>
+                                <th className="px-6 py-4 font-medium">Projeto</th>
+                                <th className="px-6 py-4 font-medium">Status</th>
                                 <th className="px-6 py-4 font-medium text-right font-bold text-foreground-app">Valor</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-app">
                             {loading && filteredServices.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-20 text-center">
+                                    <td colSpan={6} className="px-6 py-20 text-center">
                                         <div className="flex flex-col items-center gap-3">
                                             <RefreshCcw className="w-8 h-8 animate-spin text-primary-app" />
                                             <span className="text-muted-foreground">Buscando serviços...</span>
@@ -275,19 +288,38 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates, set
                                 filteredServices.map((service) => (
                                     <tr key={service.id} className="group hover:bg-white/5 transition-colors">
                                         <td className="px-6 py-4 text-muted-foreground">
-                                            {format(parseISO(service.transaction_date), 'dd/MM/yyyy')}
+                                            {service.transaction_date ? format(parseISO(service.transaction_date), 'dd/MM/yyyy') : '-'}
                                         </td>
                                         <td className="px-6 py-4 font-medium">
-                                            {service.transaction_name}
+                                            <div className="flex flex-col">
+                                                <span>{service.transaction_name}</span>
+                                                {service.installment_label && (
+                                                    <span className="text-[10px] text-primary-app font-bold uppercase tracking-wider">
+                                                        {service.installment_label}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 text-muted-foreground">
                                             <span className="px-2 py-1 rounded bg-secondary-app text-xs uppercase tracking-wider font-semibold">
-                                                {service.categories?.category_description || 'N/A'}
+                                                {service.category_description}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="text-sm">
-                                                {service.departments?.name || '-'}
+                                                {service.project_name}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase border ${service.status_titulo === 'LIQUIDADO'
+                                                ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                                                : service.status_titulo === 'ABERTO'
+                                                    ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
+                                                    : service.status_titulo === 'ATRASADO'
+                                                        ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                                                        : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                                                }`}>
+                                                {service.status_titulo || 'N/A'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right font-bold text-primary-app tabular-nums">
@@ -297,7 +329,7 @@ export default function ServicesPage({ timeRange, setTimeRange, customDates, set
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-20 text-center text-muted-foreground font-medium">
+                                    <td colSpan={6} className="px-6 py-20 text-center text-muted-foreground font-medium">
                                         Nenhum registro encontrado.
                                     </td>
                                 </tr>
