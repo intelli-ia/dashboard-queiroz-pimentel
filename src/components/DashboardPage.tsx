@@ -7,11 +7,12 @@ import { format, subDays, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Loader2, Banknote, TrendingUp, Hash, Calculator, FileText, PieChart as PieChartIcon } from 'lucide-react'
 import {
-  LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  AreaChart, Area, LineChart, Line, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  BarChart, Bar, LabelList
 } from 'recharts'
 import GlobalFilterBar from './GlobalFilterBar'
-import type { PageProps, FinancialMovement } from '@/types'
+import type { PageProps, FinancialMovement, AccountReceivable } from '@/types'
 
 const CHART_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316']
 
@@ -31,6 +32,8 @@ interface MovementWithCategory extends FinancialMovement {
 export default function DashboardPage({ timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
   const [loading, setLoading] = useState(true)
   const [movements, setMovements] = useState<MovementWithCategory[]>([])
+  const [receivables, setReceivables] = useState<AccountReceivable[]>([])
+  const [interactiveTimeRange, setInteractiveTimeRange] = useState('all')
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true)
@@ -63,7 +66,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
         categoriesRaw?.map((c: { code: string; description: string }) => [c.code, c.description]) || []
       )
 
-      // Build query
+      // Build query - filtra apenas CONTA_CORRENTE_PAG para exibir impacto real no caixa
       let query = supabase
         .from('financial_movements')
         .select(`
@@ -76,7 +79,9 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
           valor_pago,
           category_code,
           document_type,
-          project_code
+          project_code,
+          grupo,
+          direcao
         `)
         .gte('data_pagamento', startDate)
         .lte('data_pagamento', endDate)
@@ -95,6 +100,26 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
       })) || []
 
       setMovements(mappedData)
+
+      // Fetch accounts_receivable for Receitas
+      let receivablesQuery = supabase
+        .from('accounts_receivable')
+        .select(`
+          codigo_lancamento_omie,
+          project_code,
+          data_vencimento,
+          valor_documento,
+          status_titulo
+        `)
+        .gte('data_vencimento', startDate)
+        .lte('data_vencimento', endDate)
+
+      if (selectedProject) {
+        receivablesQuery = receivablesQuery.eq('project_code', selectedProject)
+      }
+
+      const receivablesData = await fetchAll<AccountReceivable>(receivablesQuery)
+      setReceivables(receivablesData || [])
     } catch (err) {
       console.error('Error fetching dashboard data:', err)
     } finally {
@@ -106,19 +131,17 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
     fetchDashboardData()
   }, [fetchDashboardData])
 
-  // KPI 1: Total Pagamentos (natureza='S' com liquidado=true)
+  // KPI 1: Total Pagamentos - soma APENAS do campo valor_pago de SAIDAS
   const totalPagamentos = useMemo(() => {
     return movements
-      .filter(m => m.natureza === 'S' && m.liquidado)
-      .reduce((sum, m) => sum + (m.valor_pago || m.valor_liquido || m.valor_titulo || 0), 0)
+      .filter(m => m.direcao === 'SAIDA' || m.natureza === 'S')
+      .reduce((sum, m) => sum + (m.valor_pago || 0), 0)
   }, [movements])
 
-  // KPI 2: Total Receitas (natureza='E')
+  // KPI 2: Total Receitas (da tabela accounts_receivable)
   const totalReceitas = useMemo(() => {
-    return movements
-      .filter(m => m.natureza === 'E')
-      .reduce((sum, m) => sum + (m.valor_pago || m.valor_liquido || m.valor_titulo || 0), 0)
-  }, [movements])
+    return receivables.reduce((sum, r) => sum + (r.valor_documento || 0), 0)
+  }, [receivables])
 
   // KPI 3: Total Transacoes
   const totalTransacoes = useMemo(() => movements.length, [movements])
@@ -127,7 +150,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
   const custoMedioMensal = useMemo(() => {
     const monthlyTotals = new Map<string, number>()
     movements
-      .filter(m => m.natureza === 'S' && m.data_pagamento)
+      .filter(m => (m.direcao === 'SAIDA' || m.natureza === 'S') && m.data_pagamento)
       .forEach(m => {
         const monthKey = m.data_pagamento!.substring(0, 7)
         const valor = m.valor_pago || m.valor_liquido || m.valor_titulo || 0
@@ -142,7 +165,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
   const monthlyChartData = useMemo(() => {
     const monthlyMap = new Map<string, number>()
     movements
-      .filter(m => m.natureza === 'S' && m.data_pagamento)
+      .filter(m => (m.direcao === 'SAIDA' || m.natureza === 'S') && m.data_pagamento)
       .forEach(m => {
         const monthKey = m.data_pagamento!.substring(0, 7)
         const valor = m.valor_pago || m.valor_liquido || m.valor_titulo || 0
@@ -159,7 +182,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
   const categoryChartData = useMemo(() => {
     const categoryMap = new Map<string, number>()
     movements
-      .filter(m => m.natureza === 'S')
+      .filter(m => m.direcao === 'SAIDA' || m.natureza === 'S')
       .forEach(m => {
         const cat = m.category_description || 'Sem Categoria'
         const valor = m.valor_pago || m.valor_liquido || m.valor_titulo || 0
@@ -170,11 +193,38 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
       .slice(0, 8)
   }, [movements])
 
+  // Interactive Area Chart Data: Daily cost over time
+  const interactiveChartData = useMemo(() => {
+    // 1. Group daily
+    const dailyMap = new Map<string, number>()
+    movements
+      .filter(m => (m.direcao === 'SAIDA' || m.natureza === 'S') && m.data_pagamento)
+      .forEach(m => {
+        const dateKey = m.data_pagamento!
+        const valor = m.valor_pago || m.valor_liquido || m.valor_titulo || 0
+        dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + valor)
+      })
+
+    const allDays = Array.from(dailyMap, ([date, valor]) => ({
+      date,
+      valor
+    })).sort((a, b) => a.date.localeCompare(b.date))
+
+    // 2. Filter by interactiveTimeRange
+    if (interactiveTimeRange === 'all') return allDays
+
+    const daysToSubtract = parseInt(interactiveTimeRange)
+    const referenceDate = new Date()
+    const startDate = subDays(referenceDate, daysToSubtract)
+    const resultData = allDays.filter(item => parseISO(item.date) >= startDate)
+    return resultData
+  }, [movements, interactiveTimeRange])
+
   // Pie Chart 2: Payments by Document Type
   const documentTypeChartData = useMemo(() => {
     const docTypeMap = new Map<string, number>()
     movements
-      .filter(m => m.natureza === 'S')
+      .filter(m => m.direcao === 'SAIDA' || m.natureza === 'S')
       .forEach(m => {
         const docType = m.document_type || 'Outros'
         const valor = m.valor_pago || m.valor_liquido || m.valor_titulo || 0
@@ -228,7 +278,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
             Receitas
           </div>
           <div className="text-3xl font-bold text-green-400">{formatCurrency(totalReceitas)}</div>
-          <p className="text-xs text-muted-foreground">Entradas no periodo</p>
+          <p className="text-xs text-muted-foreground">Contas a receber no periodo</p>
         </div>
 
         {/* Transacoes */}
@@ -261,55 +311,143 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
 
       {/* Line Chart - Monthly Values */}
       {!loading && monthlyChartData.length > 0 && (
-        <div className="glass rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="w-5 h-5 text-primary-app" />
-            <h3 className="text-lg font-semibold">Valores Pagos Mes a Mes</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="glass rounded-xl p-6 flex flex-col">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary-app" />
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Custo por Tempo (Diário)</h3>
+                  <p className="text-xs text-muted-foreground">Evolução diária dos pagamentos efetivados</p>
+                </div>
+              </div>
+              <select
+                value={interactiveTimeRange}
+                onChange={(e) => setInteractiveTimeRange(e.target.value)}
+                className="bg-slate-900/50 border border-slate-700/50 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary-app/50 cursor-pointer"
+              >
+                <option value="all">Todo o período</option>
+                <option value="90">Últimos 90 dias</option>
+                <option value="30">Últimos 30 dias</option>
+                <option value="7">Últimos 7 dias</option>
+              </select>
+            </div>
+
+            <div className="h-[300px] w-full mt-auto">
+              {interactiveChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={interactiveChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="fillCusto" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fill: '#94a3b8', fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickMargin={12}
+                      minTickGap={30}
+                      tickFormatter={(value) => format(parseISO(value), 'dd MMM', { locale: ptBR })}
+                    />
+                    <YAxis
+                      tick={{ fill: '#94a3b8', fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
+                      width={45}
+                    />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-2xl backdrop-blur-md bg-opacity-90">
+                              <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider mb-1">
+                                {format(parseISO(payload[0].payload.date), "dd 'de' MMMM", { locale: ptBR })}
+                              </p>
+                              <p className="text-white font-bold text-lg">
+                                {formatCurrency(payload[0].value as number)}
+                              </p>
+                            </div>
+                          )
+                        }
+                        return null
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="valor"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#fillCusto)"
+                      activeDot={{ r: 4, strokeWidth: 0, fill: '#6366f1' }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                  Nenhum dado para o período selecionado
+                </div>
+              )}
+            </div>
           </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={monthlyChartData} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fill: '#94a3b8', fontSize: 12 }}
-                  axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
-                />
-                <YAxis
-                  tick={{ fill: '#94a3b8', fontSize: 12 }}
-                  tickFormatter={(value) => `R$ ${value >= 1000000
-                    ? (value / 1000000).toFixed(1) + 'M'
-                    : value >= 1000
-                      ? (value / 1000).toFixed(0) + 'k'
-                      : value}`}
-                  axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
-                  width={70}
-                />
-                <Tooltip
-                  content={({ active, payload, label }) => {
-                    if (active && payload && payload.length) {
-                      return (
-                        <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-2xl">
-                          <p className="text-muted-foreground text-sm mb-1">{label}</p>
-                          <p className="text-primary-app font-bold text-lg">
-                            {formatCurrency(payload[0].value as number)}
-                          </p>
-                        </div>
-                      )
-                    }
-                    return null
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, fill: '#6366f1' }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+
+          <div className="glass rounded-xl p-6 flex flex-col">
+            <div className="flex items-center gap-2 mb-6">
+              <TrendingUp className="w-5 h-5 text-primary-app" />
+              <div>
+                <h3 className="text-lg font-semibold text-white">Visão Mensal</h3>
+                <p className="text-xs text-muted-foreground">Consolidado de pagamentos por mês</p>
+              </div>
+            </div>
+            <div className="h-[300px] w-full mt-auto">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={monthlyChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fill: '#94a3b8', fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickMargin={12}
+                  />
+                  <YAxis
+                    tick={{ fill: '#94a3b8', fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(value) => `R$ ${value >= 1000000 ? (value / 1000000).toFixed(1) + 'M' : value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
+                    width={45}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-2xl backdrop-blur-md bg-opacity-90">
+                            <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider mb-1">{label}</p>
+                            <p className="text-white font-bold text-lg">
+                              {formatCurrency(payload[0].value as number)}
+                            </p>
+                          </div>
+                        )
+                      }
+                      return null
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    dot={{ fill: '#3b82f6', r: 3, strokeWidth: 0 }}
+                    activeDot={{ r: 5, strokeWidth: 0, fill: '#6366f1' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
       )}
@@ -324,24 +462,41 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
                 <PieChartIcon className="w-5 h-5 text-primary-app" />
                 <h3 className="text-lg font-semibold">Pagamentos por Categoria</h3>
               </div>
-              <div className="h-[300px]">
+              <div className="h-[550px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={categoryChartData}
                       cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={2}
+                      cy="42%"
+                      innerRadius={100}
+                      outerRadius={150}
+                      paddingAngle={3}
                       dataKey="value"
-                      label={({ name, percent }) => `${name.length > 15 ? name.substring(0, 15) + '...' : name} (${(percent * 100).toFixed(0)}%)`}
-                      labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
                     >
                       {categoryChartData.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                       ))}
                     </Pie>
+                    <Legend
+                      content={(props) => (
+                        <ul className="grid grid-cols-2 gap-x-8 gap-y-2 mt-4 px-4">
+                          {props.payload?.map((entry: any, index: number) => {
+                            const val = entry.payload.value
+                            const formattedVal = val >= 1000 ? (val / 1000).toFixed(0) + 'K' : val
+                            return (
+                              <li key={`item-${index}`} className="flex items-center justify-between border-b border-white/5 pb-1">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
+                                  <span className="text-muted-foreground text-[11px] truncate">{entry.value}</span>
+                                </div>
+                                <span className="text-white text-[11px] font-bold ml-4 shrink-0">{formattedVal}</span>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )}
+                    />
                     <Tooltip
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
@@ -363,38 +518,39 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
             </div>
           )}
 
-          {/* Pie Chart 2: Document Type */}
+          {/* Chart 2: Document Type (Horizontal Bars) */}
           {documentTypeChartData.length > 0 && (
-            <div className="glass rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-4">
+            <div className="glass rounded-xl p-6 flex flex-col">
+              <div className="flex items-center gap-2 mb-6">
                 <FileText className="w-5 h-5 text-primary-app" />
                 <h3 className="text-lg font-semibold">Pagamentos por Tipo de Documento</h3>
               </div>
-              <div className="h-[300px]">
+              <div className="h-[480px] w-full mt-auto">
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={documentTypeChartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={2}
-                      dataKey="value"
-                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                      labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
-                    >
-                      {documentTypeChartData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
+                  <BarChart
+                    data={documentTypeChartData}
+                    layout="vertical"
+                    margin={{ top: 5, right: 80, left: 40, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
+                    <XAxis type="number" hide />
+                    <YAxis
+                      dataKey="name"
+                      type="category"
+                      tick={{ fill: '#94a3b8', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={100}
+                      tickFormatter={(value) => docTypeLabels[value] || value}
+                    />
                     <Tooltip
+                      cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           return (
-                            <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-2xl">
+                            <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-2xl backdrop-blur-md bg-opacity-90">
                               <p className="text-white font-semibold text-sm mb-1">
-                                {docTypeLabels[payload[0].name as string] || payload[0].name}
+                                {docTypeLabels[payload[0].payload.name as string] || payload[0].payload.name}
                               </p>
                               <p className="text-primary-app font-bold text-lg">
                                 {formatCurrency(payload[0].value as number)}
@@ -405,7 +561,25 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
                         return null
                       }}
                     />
-                  </PieChart>
+                    <Bar
+                      dataKey="value"
+                      radius={[0, 4, 4, 0]}
+                      barSize={24}
+                    >
+                      {documentTypeChartData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                      <LabelList
+                        dataKey="value"
+                        position="right"
+                        style={{ fill: '#fff', fontSize: 11, fontWeight: 'bold' }}
+                        formatter={(val: number) => {
+                          const formattedVal = val >= 1000 ? (val / 1000).toFixed(0) + 'K' : val
+                          return ` ${formattedVal}`
+                        }}
+                      />
+                    </Bar>
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>

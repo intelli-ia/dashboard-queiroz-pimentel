@@ -24,6 +24,7 @@ interface MappedPayable {
     category_description: string
     status_titulo: string | null
     installment_label: string
+    current_installment: number
     document_type: string | null
 }
 
@@ -32,8 +33,8 @@ export default function AccountsPayablePage({ timeRange, setTimeRange, customDat
     const [loading, setLoading] = useState(true)
 
     // Sorting state
-    const [sortField, setSortField] = useState<SortField | null>(null)
-    const [sortDirection, setSortDirection] = useState<SortDirection>(null)
+    const [sortField, setSortField] = useState<SortField | null>('display_date')
+    const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
     // Filter state
     const [filters, setFilters] = useState<Record<string, string>>({
@@ -119,9 +120,7 @@ export default function AccountsPayablePage({ timeRange, setTimeRange, customDat
                 const displayDate = item.data_pagamento || item.data_vencimento || item.data_emissao || ''
 
                 // Build installment label
-                const installmentLabel = item.total_installments > 1
-                    ? `${item.current_installment}/${item.total_installments}`
-                    : ''
+                const installmentLabel = `${item.current_installment || 1}/${item.total_installments || 1}`
 
                 return {
                     id: item.codigo_titulo,
@@ -135,6 +134,7 @@ export default function AccountsPayablePage({ timeRange, setTimeRange, customDat
                     category_description: categoryMap.get(item.category_code || '') || 'N/A',
                     status_titulo: item.status,
                     installment_label: installmentLabel,
+                    current_installment: item.current_installment || 1,
                     document_type: item.document_type
                 }
             }) || []
@@ -194,6 +194,15 @@ export default function AccountsPayablePage({ timeRange, setTimeRange, customDat
             result.sort((a, b) => {
                 let aValue: string | number = (a as any)[sortField] as string | number
                 let bValue: string | number = (b as any)[sortField] as string | number
+
+                if (aValue === bValue) {
+                    // Secondary sort by installment number if dates are equal
+                    if (sortField === 'display_date') {
+                        return (a.current_installment - b.current_installment) * (sortDirection === 'asc' ? 1 : -1)
+                    }
+                    return 0
+                }
+
                 if (sortField === 'valor_documento') {
                     aValue = Number(aValue) || 0
                     bValue = Number(bValue) || 0

@@ -16,19 +16,25 @@ interface PageProps extends BasePageProps {
     includeKeywords?: string[]
 }
 
-type SortField = 'display_date' | 'numero_documento' | 'category_description' | 'project_name' | 'valor_documento' | 'status_titulo'
+type SortField = 'display_date' | 'cpf_cnpj_cliente' | 'numero_documento' | 'tipo_movimento' | 'direcao' | 'category_description' | 'project_name' | 'valor_documento' | 'status_titulo'
 type SortDirection = 'asc' | 'desc' | null
 
 interface MappedMovement {
     id: number
     numero_documento: string | null
     display_date: string
+    cpf_cnpj_cliente: string | null
     is_paid: boolean
     status_titulo: string | null
     valor_documento: number
     project_name: string
     category_description: string
     installment_label: string
+    current_installment: number
+    tipo_movimento: string
+    direcao: string
+    is_efetivado: boolean
+    origem_descricao: string
 }
 
 export default function GenericFinancialPage({ title, documentTypes, fetchAllTypes = false, timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
@@ -37,12 +43,15 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
 
     // Sorting state
     const [sortField, setSortField] = useState<SortField | null>('display_date')
-    const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+    const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
     // Filter state
     const [filters, setFilters] = useState<Record<string, string>>({
         display_date: '',
+        cpf_cnpj_cliente: '',
         numero_documento: '',
+        tipo_movimento: '',
+        direcao: '',
         category_description: '',
         project_name: '',
         valor_documento: '',
@@ -81,12 +90,14 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
             // Map Projects from props
             const projectMap = new Map(projects.map(p => [p.id, p.name]))
 
+            // Query all financial movements
             let query = supabase
                 .from('financial_movements')
                 .select(`
                     codigo_titulo,
                     numero_titulo,
                     numero_documento_fiscal,
+                    cpf_cnpj_cliente,
                     project_code,
                     category_code,
                     current_installment,
@@ -98,8 +109,14 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                     liquidado,
                     valor_liquido,
                     valor_titulo,
+                    valor_pago,
                     document_type,
-                    natureza
+                    natureza,
+                    grupo,
+                    tipo_movimento,
+                    direcao,
+                    is_efetivado,
+                    origem_descricao
                 `)
 
             // Add project filter if selected
@@ -129,20 +146,24 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 const displayDate = item.data_pagamento || item.data_vencimento || item.data_emissao || ''
 
                 // Build installment label
-                const installmentLabel = item.total_installments > 1
-                    ? `${item.current_installment}/${item.total_installments}`
-                    : ''
+                const installmentLabel = `${item.current_installment || 1}/${item.total_installments || 1}`
 
                 return {
                     id: item.codigo_titulo,
                     numero_documento: item.numero_titulo || item.numero_documento_fiscal,
                     display_date: displayDate,
+                    cpf_cnpj_cliente: item.cpf_cnpj_cliente,
                     is_paid: isPaid,
                     status_titulo: item.status,
                     valor_documento: Number(item.valor_pago || item.valor_liquido || item.valor_titulo) || 0,
                     project_name: projectMap.get(item.project_code || '') || 'N/A',
                     category_description: categoryMap.get(item.category_code || '') || 'N/A',
-                    installment_label: installmentLabel
+                    installment_label: installmentLabel,
+                    current_installment: item.current_installment || 1,
+                    tipo_movimento: item.tipo_movimento || 'N/A',
+                    direcao: item.direcao || 'N/A',
+                    is_efetivado: item.is_efetivado || false,
+                    origem_descricao: item.origem_descricao || 'N/A'
                 }
             }) || []
 
@@ -165,11 +186,17 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
 
         // Apply filters
         Object.keys(filters).forEach(key => {
-            if (filters[key]) {
-                const searchValue = filters[key].toLowerCase()
+            const searchValue = filters[key]?.trim()
+            if (searchValue) {
                 result = result.filter(item => {
-                    const itemValue = String((item as any)[key] || '').toLowerCase()
-                    return itemValue.includes(searchValue)
+                    const itemValue = String((item as any)[key] || '').trim()
+
+                    // Use exact match for dropdown filters, partial match for text inputs (CNPJ/CPF, Nº Documento, Valor, etc)
+                    if (['tipo_movimento', 'direcao', 'category_description', 'project_name', 'status_titulo'].includes(key)) {
+                        return itemValue === searchValue
+                    } else {
+                        return itemValue.toLowerCase().includes(searchValue.toLowerCase())
+                    }
                 })
             }
         })
@@ -180,7 +207,13 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 const aValue = (a as any)[sortField]
                 const bValue = (b as any)[sortField]
 
-                if (aValue === bValue) return 0
+                if (aValue === bValue) {
+                    // Secondary sort by installment number if dates are equal
+                    if (sortField === 'display_date') {
+                        return (a.current_installment - b.current_installment) * (sortDirection === 'asc' ? 1 : -1)
+                    }
+                    return 0
+                }
                 const comparison = (aValue as string | number) > (bValue as string | number) ? 1 : -1
                 return sortDirection === 'asc' ? comparison : -comparison
             })
@@ -203,12 +236,33 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
         setFilters(prev => ({ ...prev, [field]: value }))
     }
 
+    // Generate unique options for dropdown filters
+    const uniqueOptions = useMemo(() => {
+        return {
+            tipo_movimento: Array.from(new Set(movements.map(m => m.tipo_movimento).filter(Boolean))).sort(),
+            direcao: Array.from(new Set(movements.map(m => m.direcao).filter(Boolean))).sort(),
+            category_description: Array.from(new Set(movements.map(m => m.category_description).filter(v => v !== 'N/A'))).sort(),
+            project_name: Array.from(new Set(movements.map(m => m.project_name).filter(v => v !== 'N/A'))).sort(),
+            status_titulo: Array.from(new Set(movements.map(m => m.status_titulo).filter(Boolean))).sort()
+        }
+    }, [movements])
+
     const totals = useMemo(() => {
-        return filteredMovements.reduce((acc, curr) => ({
-            total: acc.total + curr.valor_documento,
-            paid: acc.paid + (curr.is_paid ? curr.valor_documento : 0),
-            pending: acc.pending + (!curr.is_paid ? curr.valor_documento : 0)
-        }), { total: 0, paid: 0, pending: 0 })
+        // Filter only efetivated movements for KPIs
+        const efetivados = filteredMovements.filter(m => m.is_efetivado)
+
+        return {
+            entradas: efetivados
+                .filter(m => m.direcao === 'ENTRADA')
+                .reduce((acc, curr) => acc + curr.valor_documento, 0),
+            saidas: efetivados
+                .filter(m => m.direcao === 'SAIDA')
+                .reduce((acc, curr) => acc + curr.valor_documento, 0),
+            saldo: efetivados.reduce((acc, curr) => {
+                return acc + (curr.direcao === 'ENTRADA' ? curr.valor_documento : -curr.valor_documento)
+            }, 0),
+            total: efetivados.reduce((acc, curr) => acc + curr.valor_documento, 0)
+        }
     }, [filteredMovements])
 
     const CHART_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316']
@@ -252,9 +306,36 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total do Período</p>
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Entradas</p>
+                        <p className="text-3xl font-bold mt-1 text-green-400">
+                            {formatCurrency(totals.entradas)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
+                    <div className="relative z-10">
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Saídas</p>
+                        <p className="text-3xl font-bold mt-1 text-orange-400">
+                            {formatCurrency(totals.saidas)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
+                    <div className="relative z-10">
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Saldo</p>
+                        <p className={`text-3xl font-bold mt-1 ${totals.saldo >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {formatCurrency(totals.saldo)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
+                    <div className="relative z-10">
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total Movimentado</p>
                         <p className="text-3xl font-bold mt-1 text-white">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totals.total)}
+                            {formatCurrency(totals.total)}
                         </p>
                     </div>
                 </div>
@@ -333,7 +414,10 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                             <tr className="bg-muted-app/30 border-b border-border-app">
                                 {[
                                     { id: 'display_date', label: 'Data', width: 'w-32' },
+                                    { id: 'cpf_cnpj_cliente', label: 'CNPJ/CPF', width: 'w-40' },
                                     { id: 'numero_documento', label: 'Nº Documento', width: 'w-40' },
+                                    { id: 'tipo_movimento', label: 'Tipo', width: 'w-44' },
+                                    { id: 'direcao', label: 'Direção', width: 'w-32' },
                                     { id: 'category_description', label: 'Categoria' },
                                     { id: 'project_name', label: 'Projeto' },
                                     { id: 'valor_documento', label: 'Valor', width: 'w-36' },
@@ -353,21 +437,39 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                 )}
                                             </button>
                                             <div className="relative group">
-                                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 group-focus-within:text-primary-app transition-colors" />
-                                                <input
-                                                    type="text"
-                                                    value={filters[col.id]}
-                                                    onChange={(e) => updateFilter(col.id, e.target.value)}
-                                                    className="w-full h-8 pl-7 pr-2 bg-background-app/50 border border-border-app/50 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-app/50 transition-all"
-                                                    placeholder="Filtrar..."
-                                                />
+                                                {['tipo_movimento', 'direcao', 'category_description', 'project_name', 'status_titulo'].includes(col.id) ? (
+                                                    <select
+                                                        value={filters[col.id]}
+                                                        onChange={(e) => updateFilter(col.id, e.target.value)}
+                                                        className="w-full h-8 px-2 bg-background-app/50 border border-border-app/50 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-app/50 transition-all appearance-none cursor-pointer"
+                                                    >
+                                                        <option value="">Todos</option>
+                                                        {(uniqueOptions[col.id as keyof typeof uniqueOptions] || []).map((option) => (
+                                                            option ? <option key={option} value={option}>{option}</option> : null
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    <>
+                                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 group-focus-within:text-primary-app transition-colors" />
+                                                        <input
+                                                            type="text"
+                                                            value={filters[col.id]}
+                                                            onChange={(e) => updateFilter(col.id, e.target.value)}
+                                                            className="w-full h-8 pl-7 pr-2 bg-background-app/50 border border-border-app/50 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-app/50 transition-all"
+                                                            placeholder="Filtrar..."
+                                                        />
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     </th>
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-border-app/50">
+                        <tbody
+                            key={JSON.stringify(filters)}
+                            className="divide-y divide-border-app/50"
+                        >
                             {filteredMovements.length > 0 ? (
                                 filteredMovements.map((item) => (
                                     <tr key={item.id} className="hover:bg-white/5 transition-colors group">
@@ -382,6 +484,9 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                             </div>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
+                                            <span className="font-mono text-xs">{item.cpf_cnpj_cliente || '-'}</span>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm">
                                             <div className="flex flex-col">
                                                 <span className="font-mono">{item.numero_documento || 'S/N'}</span>
                                                 {item.installment_label && (
@@ -390,6 +495,27 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                     </span>
                                                 )}
                                             </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${item.is_efetivado
+                                                    ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                                                    : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                                                    }`}>
+                                                    {item.tipo_movimento}
+                                                </span>
+                                                {item.is_efetivado && (
+                                                    <span className="text-green-400" title="Movimento Efetivado">✓</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm">
+                                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase border ${item.direcao === 'ENTRADA'
+                                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                : 'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                                                }`}>
+                                                {item.direcao === 'ENTRADA' ? '↓ ENTRADA' : '↑ SAIDA'}
+                                            </span>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
                                             <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-medium border border-blue-500/20">
@@ -418,7 +544,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                                    <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
                                         {loading ? 'Carregando...' : 'Nenhum registro encontrado para este período.'}
                                     </td>
                                 </tr>

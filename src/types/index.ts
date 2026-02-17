@@ -122,9 +122,15 @@ export interface FinancialMovement {
   valor_liquido: number | null
   valor_pago: number | null
   codigo_conta_corrente: number | null
+  codigo_movimento_cc: number | null
   codigo_nf: number | null
   is_nfe: boolean
   chave_nfe: string | null
+  // Derived classification fields
+  tipo_movimento: string | null
+  direcao: string | null  // 'ENTRADA' ou 'SAIDA'
+  is_efetivado: boolean
+  origem_descricao: string | null
   // Joined relations
   projects?: { code: string; name: string }
   categories?: { code: string; description: string }
