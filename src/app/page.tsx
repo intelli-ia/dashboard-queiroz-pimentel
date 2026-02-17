@@ -1,12 +1,8 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import Dashboard from '@/components/Dashboard'
-import NFEPage from '@/components/NFEPage'
-import NFSPage from '@/components/NFSPage'
-import NFEDetailsPage from '@/components/NFEDetailsPage'
 import Login from '@/components/Login'
-import { LayoutDashboard, ReceiptText, List, ChevronLeft, ChevronRight, LogOut, ScrollText, Users, Layers, TrendingUp, Banknote } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LogOut, TrendingUp, Banknote } from 'lucide-react'
 import GenericFinancialPage from '@/components/GenericFinancialPage'
 import ReceiptsPage from '@/components/ReceiptsPage'
 import AccountsPayablePage from '@/components/AccountsPayablePage'
@@ -18,7 +14,7 @@ import type { ProjectOption } from '@/types'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'items' | 'nfe' | 'nfs' | 'contracts' | 'payroll' | 'receipts' | 'misc' | 'payables' | 'movements'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'payables' | 'movements' | 'receipts'>('payables')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Shared Filter State (must be declared before any conditional returns)
@@ -116,30 +112,6 @@ export default function Home() {
 
         <nav className="flex-1 space-y-2">
           <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'dashboard'
-              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
-              }`}
-            title="Dashboard"
-          >
-            <LayoutDashboard className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Dashboard</span>}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('nfe')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'nfe'
-              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
-              }`}
-            title="NFE"
-          >
-            <ReceiptText className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">NFE</span>}
-          </button>
-
-          <button
             onClick={() => setActiveTab('payables')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'payables'
               ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
@@ -174,67 +146,6 @@ export default function Home() {
             <TrendingUp className="w-5 h-5 shrink-0" />
             {!isSidebarCollapsed && <span className="font-medium hidden md:block">Contas a Receber</span>}
           </button>
-
-          <button
-            onClick={() => setActiveTab('items')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'items'
-              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
-              }`}
-            title="Detalhamento NFE"
-          >
-            <List className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Detalhamento NFE</span>}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('nfs')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'nfs'
-              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
-              }`}
-            title="NFS"
-          >
-            <ScrollText className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">NFS</span>}
-          </button>
-
-
-          <button
-            onClick={() => setActiveTab('contracts')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'contracts'
-              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
-              }`}
-            title="Contratos"
-          >
-            <ScrollText className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Contratos</span>}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('payroll')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'payroll'
-              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
-              }`}
-            title="Folha de Pagamento"
-          >
-            <Users className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Folha de Pagamento</span>}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('misc')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'misc'
-              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
-              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
-              }`}
-            title="Geral"
-          >
-            <Layers className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Geral</span>}
-          </button>
         </nav>
 
         <div className="pt-4 border-t border-border-app mt-auto">
@@ -251,27 +162,7 @@ export default function Home() {
 
       {/* Content Area */}
       <div className={`flex-1 ${isSidebarCollapsed ? 'ml-20' : 'ml-20 md:ml-64'} transition-all duration-300`}>
-        {activeTab === 'dashboard' ? (
-          <Dashboard
-            timeRange={timeRange}
-            setTimeRange={setTimeRange}
-            customDates={customDates}
-            setCustomDates={setCustomDates}
-            selectedProject={selectedProject}
-            setSelectedProject={setSelectedProject}
-            projects={projects}
-          />
-        ) : activeTab === 'nfe' ? (
-          <NFEPage
-            timeRange={timeRange}
-            setTimeRange={setTimeRange}
-            customDates={customDates}
-            setCustomDates={setCustomDates}
-            selectedProject={selectedProject}
-            setSelectedProject={setSelectedProject}
-            projects={projects}
-          />
-        ) : activeTab === 'payables' ? (
+        {activeTab === 'payables' ? (
           <AccountsPayablePage
             timeRange={timeRange}
             setTimeRange={setTimeRange}
@@ -293,66 +184,8 @@ export default function Home() {
             setSelectedProject={setSelectedProject}
             projects={projects}
           />
-        ) : activeTab === 'nfs' ? (
-          <NFSPage
-            timeRange={timeRange}
-            setTimeRange={setTimeRange}
-            customDates={customDates}
-            setCustomDates={setCustomDates}
-            selectedProject={selectedProject}
-            setSelectedProject={setSelectedProject}
-            projects={projects}
-          />
-        ) : activeTab === 'items' ? (
-          <NFEDetailsPage
-            timeRange={timeRange}
-            setTimeRange={setTimeRange}
-            customDates={customDates}
-            setCustomDates={setCustomDates}
-            selectedProject={selectedProject}
-            setSelectedProject={setSelectedProject}
-            projects={projects}
-          />
-        ) : activeTab === 'receipts' ? (
-          <ReceiptsPage
-            timeRange={timeRange}
-            setTimeRange={setTimeRange}
-            customDates={customDates}
-            setCustomDates={setCustomDates}
-            selectedProject={selectedProject}
-            setSelectedProject={setSelectedProject}
-            projects={projects}
-          />
-        ) : activeTab === 'contracts' ? (
-          <GenericFinancialPage
-            title="Contratos"
-            documentTypes={['CTR', 'FAT', 'NLOC', 'NCS', 'CTE']}
-            includeKeywords={['Contrato', 'Locação', 'Aluguel']}
-            timeRange={timeRange}
-            setTimeRange={setTimeRange}
-            customDates={customDates}
-            setCustomDates={setCustomDates}
-            selectedProject={selectedProject}
-            setSelectedProject={setSelectedProject}
-            projects={projects}
-          />
-        ) : activeTab === 'payroll' ? (
-          <GenericFinancialPage
-            title="Folha de Pagamento"
-            documentTypes={['FOLHA', 'FGTS', 'GPS', 'SINDICATO', 'BENEFICIOS', 'GNRE', 'DAM', 'DAJE']}
-            includeKeywords={['Salário', 'Adiantamento', 'Folha', 'Encargos', 'FGTS', 'INSS', 'GRRF']}
-            timeRange={timeRange}
-            setTimeRange={setTimeRange}
-            customDates={customDates}
-            setCustomDates={setCustomDates}
-            selectedProject={selectedProject}
-            setSelectedProject={setSelectedProject}
-            projects={projects}
-          />
         ) : (
-          <GenericFinancialPage
-            title="Geral"
-            fetchAllTypes={true}
+          <ReceiptsPage
             timeRange={timeRange}
             setTimeRange={setTimeRange}
             customDates={customDates}
