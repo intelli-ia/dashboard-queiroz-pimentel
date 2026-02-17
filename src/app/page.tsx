@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import Login from '@/components/Login'
-import { ChevronLeft, ChevronRight, LogOut, TrendingUp, Banknote } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LogOut, TrendingUp, Banknote, LayoutDashboard } from 'lucide-react'
 import GenericFinancialPage from '@/components/GenericFinancialPage'
 import ReceiptsPage from '@/components/ReceiptsPage'
 import AccountsPayablePage from '@/components/AccountsPayablePage'
+import DashboardPage from '@/components/DashboardPage'
 import Image from 'next/image'
 
 import { format, subDays } from 'date-fns'
@@ -14,7 +15,7 @@ import type { ProjectOption } from '@/types'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [activeTab, setActiveTab] = useState<'payables' | 'movements' | 'receipts'>('payables')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'payables' | 'movements' | 'receipts'>('dashboard')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Shared Filter State (must be declared before any conditional returns)
@@ -112,6 +113,18 @@ export default function Home() {
 
         <nav className="flex-1 space-y-2">
           <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'dashboard'
+              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
+              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
+              }`}
+            title="Dashboard"
+          >
+            <LayoutDashboard className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Dashboard</span>}
+          </button>
+
+          <button
             onClick={() => setActiveTab('payables')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'payables'
               ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
@@ -162,7 +175,17 @@ export default function Home() {
 
       {/* Content Area */}
       <div className={`flex-1 ${isSidebarCollapsed ? 'ml-20' : 'ml-20 md:ml-64'} transition-all duration-300`}>
-        {activeTab === 'payables' ? (
+        {activeTab === 'dashboard' ? (
+          <DashboardPage
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+            customDates={customDates}
+            setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
+          />
+        ) : activeTab === 'payables' ? (
           <AccountsPayablePage
             timeRange={timeRange}
             setTimeRange={setTimeRange}
