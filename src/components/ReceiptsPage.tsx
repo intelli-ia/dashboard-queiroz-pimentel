@@ -33,14 +33,12 @@ interface SortConfig {
     direction: 'asc' | 'desc'
 }
 
-export default function ReceiptsPage({ timeRange, setTimeRange, customDates, setCustomDates }: PageProps) {
+export default function ReceiptsPage({ timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
     const [receipts, setReceipts] = useState<AccountReceivable[]>([])
     const [loading, setLoading] = useState(true)
 
     // Filters
     const [statusFilter, setStatusFilter] = useState('all')
-    const [projectFilter, setProjectFilter] = useState('all')
-    const [distinctProjects, setDistinctProjects] = useState<{ code: string; name: string }[]>([])
 
     // Sort State
     const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -71,15 +69,11 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd');
             }
 
-            // 0. Fetch Projects and Categories (Manual Join)
-            const { data: projectsRaw } = await supabase.from('projects').select('code, name')
-            const projectMap = new Map(projectsRaw?.map((p: any) => [p.code, p.name]) || [])
-
             const { data: categoriesRaw } = await supabase.from('categories').select('code, description')
             const categoryMap = new Map(categoriesRaw?.map((c: any) => [c.code, c.description]) || [])
 
             // Query accounts_receivable (no joins)
-            const query = supabase
+            let query = supabase
                 .from('accounts_receivable')
                 .select(`
                     codigo_lancamento_omie,
@@ -102,11 +96,16 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                     retem_iss,
                     valor_inss,
                     valor_ir,
-                    valor_iss
+                    valor_iss,
+                    project_name
                 `)
                 .gte('data_vencimento', startDate)
                 .lte('data_vencimento', endDate)
                 .order('data_vencimento', { ascending: true });
+
+            if (selectedProject) {
+                query = query.eq('project_code', selectedProject);
+            }
 
             const { data, error } = await query
 
@@ -114,27 +113,22 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
 
             if (data) {
                 // Map the data with projects and categories
-                const mappedData = data.map((r: any) => ({
-                    ...r,
-                    projects: { name: projectMap.get(r.project_code || '') || 'Nao Informado' },
-                    categories: { description: categoryMap.get(r.category_code || '') || 'Outros' }
-                }))
+                const mappedData = data.map((r: any) => {
+                    return {
+                        ...r,
+                        projects: { name: r.project_name || 'Nao Informado' },
+                        categories: { description: categoryMap.get(r.category_code || '') || 'Outros' }
+                    }
+                })
 
                 setReceipts(mappedData as AccountReceivable[])
-
-                // Extract distinct projects for filter
-                const uniqueProjects = Array.from(projectMap.entries())
-                    .map(([code, name]) => ({ code, name }))
-                    .sort((a, b) => a.name.localeCompare(b.name))
-
-                setDistinctProjects(uniqueProjects)
             }
         } catch (error) {
             console.error('Error fetching receipts:', error)
         } finally {
             setLoading(false)
         }
-    }, [timeRange, customDates])
+    }, [timeRange, customDates, selectedProject])
 
     useEffect(() => {
         fetchReceipts()
@@ -156,8 +150,8 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
         }
 
         // Project filter
-        if (projectFilter !== 'all') {
-            result = result.filter(r => r.project_code === projectFilter)
+        if (selectedProject) {
+            result = result.filter(r => r.project_code === selectedProject)
         }
 
         // Sorting
@@ -196,7 +190,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
         })
 
         return result
-    }, [receipts, statusFilter, projectFilter, sortConfig])
+    }, [receipts, statusFilter, selectedProject, sortConfig])
 
     const handleStatusChange = async (codigo_lancamento_omie: number, newStatus: string) => {
         try {
@@ -299,13 +293,13 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                             <FileText className="w-4 h-4" /> Obra / Projeto
                         </label>
                         <select
-                            value={projectFilter}
-                            onChange={(e) => setProjectFilter(e.target.value)}
+                            value={selectedProject}
+                            onChange={(e) => setSelectedProject(e.target.value)}
                             className="w-full bg-muted-app border border-border-app rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-app transition-all appearance-none"
                         >
-                            <option value="all">Todas as Obras</option>
-                            {distinctProjects.map(project => (
-                                <option key={project.code} value={project.code}>{project.name}</option>
+                            <option value="">Todas as Obras</option>
+                            {projects.map(project => (
+                                <option key={project.id} value={project.id}>{project.name}</option>
                             ))}
                         </select>
                     </div>
