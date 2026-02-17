@@ -71,7 +71,14 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd');
             }
 
-            // Query accounts_receivable with projects and categories joins
+            // 0. Fetch Projects and Categories (Manual Join)
+            const { data: projectsRaw } = await supabase.from('projects').select('code, name')
+            const projectMap = new Map(projectsRaw?.map((p: any) => [p.code, p.name]) || [])
+
+            const { data: categoriesRaw } = await supabase.from('categories').select('code, description')
+            const categoryMap = new Map(categoriesRaw?.map((c: any) => [c.code, c.description]) || [])
+
+            // Query accounts_receivable (no joins)
             const query = supabase
                 .from('accounts_receivable')
                 .select(`
@@ -95,9 +102,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                     retem_iss,
                     valor_inss,
                     valor_ir,
-                    valor_iss,
-                    projects:project_code (code, name),
-                    categories:category_code (code, description)
+                    valor_iss
                 `)
                 .gte('data_vencimento', startDate)
                 .lte('data_vencimento', endDate)
@@ -108,17 +113,20 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
             if (error) throw error
 
             if (data) {
-                setReceipts(data as AccountReceivable[])
+                // Map the data with projects and categories
+                const mappedData = data.map((r: any) => ({
+                    ...r,
+                    projects: { name: projectMap.get(r.project_code || '') || 'Nao Informado' },
+                    categories: { description: categoryMap.get(r.category_code || '') || 'Outros' }
+                }))
+
+                setReceipts(mappedData as AccountReceivable[])
 
                 // Extract distinct projects for filter
-                const projectsMap = new Map<string, string>()
-                data.forEach((r: AccountReceivable) => {
-                    if (r.projects && r.project_code) {
-                        projectsMap.set(r.project_code, r.projects.name)
-                    }
-                })
-                const uniqueProjects = Array.from(projectsMap, ([code, name]) => ({ code, name }))
+                const uniqueProjects = Array.from(projectMap.entries())
+                    .map(([code, name]) => ({ code, name }))
                     .sort((a, b) => a.name.localeCompare(b.name))
+
                 setDistinctProjects(uniqueProjects)
             }
         } catch (error) {

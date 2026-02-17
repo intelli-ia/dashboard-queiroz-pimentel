@@ -6,9 +6,10 @@ import NFEPage from '@/components/NFEPage'
 import NFSPage from '@/components/NFSPage'
 import NFEDetailsPage from '@/components/NFEDetailsPage'
 import Login from '@/components/Login'
-import { LayoutDashboard, ReceiptText, List, ChevronLeft, ChevronRight, LogOut, ScrollText, Users, Layers, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, ReceiptText, List, ChevronLeft, ChevronRight, LogOut, ScrollText, Users, Layers, TrendingUp, Banknote } from 'lucide-react'
 import GenericFinancialPage from '@/components/GenericFinancialPage'
 import ReceiptsPage from '@/components/ReceiptsPage'
+import AccountsPayablePage from '@/components/AccountsPayablePage'
 import Image from 'next/image'
 
 import { format, subDays } from 'date-fns'
@@ -17,7 +18,7 @@ import type { ProjectOption } from '@/types'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'items' | 'nfe' | 'nfs' | 'contracts' | 'payroll' | 'receipts' | 'misc'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'items' | 'nfe' | 'nfs' | 'contracts' | 'payroll' | 'receipts' | 'misc' | 'payables' | 'movements'>('dashboard')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Shared Filter State (must be declared before any conditional returns)
@@ -139,6 +140,30 @@ export default function Home() {
           </button>
 
           <button
+            onClick={() => setActiveTab('payables')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'payables'
+              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
+              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
+              }`}
+            title="Contas a Pagar"
+          >
+            <Banknote className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Contas a Pagar</span>}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('movements')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'movements'
+              ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
+              : 'hover:bg-white/5 text-muted-foreground hover:text-white'
+              }`}
+            title="Movimentos Financeiros"
+          >
+            <TrendingUp className="w-5 h-5 shrink-0" />
+            {!isSidebarCollapsed && <span className="font-medium hidden md:block">Movimentos Financeiros</span>}
+          </button>
+
+          <button
             onClick={() => setActiveTab('receipts')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'receipts'
               ? 'bg-primary-app text-white shadow-lg shadow-primary-app/20'
@@ -246,6 +271,28 @@ export default function Home() {
             setSelectedProject={setSelectedProject}
             projects={projects}
           />
+        ) : activeTab === 'payables' ? (
+          <AccountsPayablePage
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+            customDates={customDates}
+            setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
+          />
+        ) : activeTab === 'movements' ? (
+          <GenericFinancialPage
+            title="Movimentos Financeiros"
+            fetchAllTypes={true}
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+            customDates={customDates}
+            setCustomDates={setCustomDates}
+            selectedProject={selectedProject}
+            setSelectedProject={setSelectedProject}
+            projects={projects}
+          />
         ) : activeTab === 'nfs' ? (
           <NFSPage
             timeRange={timeRange}
@@ -279,7 +326,7 @@ export default function Home() {
         ) : activeTab === 'contracts' ? (
           <GenericFinancialPage
             title="Contratos"
-            paymentTypes={['CTR', 'FAT', 'NLOC', 'NCS', 'CTE']}
+            documentTypes={['CTR', 'FAT', 'NLOC', 'NCS', 'CTE']}
             includeKeywords={['Contrato', 'Locação', 'Aluguel']}
             timeRange={timeRange}
             setTimeRange={setTimeRange}
@@ -292,7 +339,7 @@ export default function Home() {
         ) : activeTab === 'payroll' ? (
           <GenericFinancialPage
             title="Folha de Pagamento"
-            paymentTypes={['SAL', '13S', 'FER', 'FPGT', 'ADI', 'GNRE', 'DAM', 'DAJE']}
+            documentTypes={['FOLHA', 'FGTS', 'GPS', 'SINDICATO', 'BENEFICIOS', 'GNRE', 'DAM', 'DAJE']}
             includeKeywords={['Salário', 'Adiantamento', 'Folha', 'Encargos', 'FGTS', 'INSS', 'GRRF']}
             timeRange={timeRange}
             setTimeRange={setTimeRange}

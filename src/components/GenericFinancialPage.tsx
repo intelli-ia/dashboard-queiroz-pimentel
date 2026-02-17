@@ -7,12 +7,13 @@ import { format, subDays, parseISO } from 'date-fns'
 import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, BarChart3 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import GlobalFilterBar from './GlobalFilterBar'
-import type { PageProps as BasePageProps, AccountPayable } from '@/types'
+import type { PageProps as BasePageProps, FinancialMovement } from '@/types'
 
 interface PageProps extends BasePageProps {
     title: string
     documentTypes?: string[]
     fetchAllTypes?: boolean
+    includeKeywords?: string[]
 }
 
 type SortField = 'display_date' | 'numero_documento' | 'category_description' | 'project_name' | 'valor_documento' | 'status_titulo'
@@ -30,7 +31,7 @@ interface MappedMovement {
     installment_label: string
 }
 
-export default function GenericFinancialPage({ title, documentTypes = [], fetchAllTypes = false, timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
+export default function GenericFinancialPage({ title, documentTypes, fetchAllTypes = false, timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
     const [movements, setMovements] = useState<MappedMovement[]>([])
     const [loading, setLoading] = useState(true)
 
@@ -73,11 +74,18 @@ export default function GenericFinancialPage({ title, documentTypes = [], fetchA
 
             console.log(`Fetching ${title} from`, startDate, 'to', endDate)
 
+            // 0. Fetch Categories (Manual Join)
+            const { data: categoriesRaw } = await supabase.from('categories').select('code, description')
+            const categoryMap = new Map(categoriesRaw?.map((c: any) => [c.code, c.description]) || [])
+
+            // Map Projects from props
+            const projectMap = new Map(projects.map(p => [p.id, p.name]))
+
             let query = supabase
-                .from('accounts_payable')
+                .from('financial_movements')
                 .select(`
-                    codigo_lancamento_omie,
-                    numero_documento,
+                    codigo_titulo,
+                    numero_titulo,
                     numero_documento_fiscal,
                     project_code,
                     category_code,
@@ -85,11 +93,13 @@ export default function GenericFinancialPage({ title, documentTypes = [], fetchA
                     total_installments,
                     data_emissao,
                     data_vencimento,
-                    status_titulo,
-                    valor_documento,
+                    data_pagamento,
+                    status,
+                    liquidado,
+                    valor_liquido,
+                    valor_titulo,
                     document_type,
-                    projects:project_code (code, name),
-                    categories:category_code (code, description)
+                    natureza
                 `)
 
             // Add project filter if selected
@@ -98,20 +108,25 @@ export default function GenericFinancialPage({ title, documentTypes = [], fetchA
             }
 
             // Filter by document types if not fetching all
-            if (!fetchAllTypes && documentTypes.length > 0) {
+            if (!fetchAllTypes && documentTypes && documentTypes.length > 0) {
                 query = query.in('document_type', documentTypes)
+                // For non-general tabs, we usually want Saidas (Expenditures)
+                // unless it's the Receipts tab (which uses a different component)
+                if (title !== 'Movimentos Financeiros') {
+                    query = query.eq('natureza', 'S')
+                }
             }
 
             query = query
-                .gte('data_vencimento', startDate)
-                .lte('data_vencimento', endDate)
-                .order('data_vencimento', { ascending: false })
+                .gte('data_pagamento', startDate)
+                .lte('data_pagamento', endDate)
+                .order('data_pagamento', { ascending: false })
 
-            const rawData = await fetchAll<AccountPayable>(query)
+            const rawData = await fetchAll<FinancialMovement>(query)
 
             const mappedData: MappedMovement[] = rawData?.map(item => {
-                const isPaid = item.status_titulo === 'LIQUIDADO'
-                const displayDate = item.data_vencimento || item.data_emissao || ''
+                const isPaid = item.liquidado || item.status === 'PAGO' || item.status === 'LIQUIDADO'
+                const displayDate = item.data_pagamento || item.data_vencimento || item.data_emissao || ''
 
                 // Build installment label
                 const installmentLabel = item.total_installments > 1
@@ -119,14 +134,14 @@ export default function GenericFinancialPage({ title, documentTypes = [], fetchA
                     : ''
 
                 return {
-                    id: item.codigo_lancamento_omie,
-                    numero_documento: item.numero_documento || item.numero_documento_fiscal,
+                    id: item.codigo_titulo,
+                    numero_documento: item.numero_titulo || item.numero_documento_fiscal,
                     display_date: displayDate,
                     is_paid: isPaid,
-                    status_titulo: item.status_titulo,
-                    valor_documento: Number(item.valor_documento) || 0,
-                    project_name: item.projects?.name || 'N/A',
-                    category_description: item.categories?.description || 'N/A',
+                    status_titulo: item.status,
+                    valor_documento: Number(item.valor_pago || item.valor_liquido || item.valor_titulo) || 0,
+                    project_name: projectMap.get(item.project_code || '') || 'N/A',
+                    category_description: categoryMap.get(item.category_code || '') || 'N/A',
                     installment_label: installmentLabel
                 }
             }) || []
@@ -137,7 +152,8 @@ export default function GenericFinancialPage({ title, documentTypes = [], fetchA
         } finally {
             setLoading(false)
         }
-    }, [timeRange, customDates, selectedProject, title, fetchAllTypes, documentTypes])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [timeRange, customDates, selectedProject, title, fetchAllTypes, JSON.stringify(documentTypes), projects])
 
     useEffect(() => {
         fetchMovements()
@@ -152,7 +168,7 @@ export default function GenericFinancialPage({ title, documentTypes = [], fetchA
             if (filters[key]) {
                 const searchValue = filters[key].toLowerCase()
                 result = result.filter(item => {
-                    const itemValue = String((item as Record<string, unknown>)[key] || '').toLowerCase()
+                    const itemValue = String((item as any)[key] || '').toLowerCase()
                     return itemValue.includes(searchValue)
                 })
             }
@@ -161,8 +177,8 @@ export default function GenericFinancialPage({ title, documentTypes = [], fetchA
         // Apply sorting
         if (sortField && sortDirection) {
             result.sort((a, b) => {
-                const aValue = (a as Record<string, unknown>)[sortField]
-                const bValue = (b as Record<string, unknown>)[sortField]
+                const aValue = (a as any)[sortField]
+                const bValue = (b as any)[sortField]
 
                 if (aValue === bValue) return 0
                 const comparison = (aValue as string | number) > (bValue as string | number) ? 1 : -1

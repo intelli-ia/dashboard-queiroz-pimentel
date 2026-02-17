@@ -4,15 +4,15 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
-import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, X, BarChart3 } from 'lucide-react'
+import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, X, BarChart3, Banknote } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import GlobalFilterBar from './GlobalFilterBar'
 import type { PageProps, FinancialMovement } from '@/types'
 
-type SortField = 'display_date' | 'numero_documento' | 'project_name' | 'category_description' | 'installment_label' | 'valor_documento'
+type SortField = 'display_date' | 'numero_documento' | 'project_name' | 'category_description' | 'installment_label' | 'valor_documento' | 'status_titulo'
 type SortDirection = 'asc' | 'desc' | null
 
-interface MappedInvoice {
+interface MappedPayable {
     id: number
     numero_documento: string | null
     numero_documento_fiscal: string | null
@@ -22,13 +22,13 @@ interface MappedInvoice {
     valor_documento: number
     project_name: string
     category_description: string
-    is_paid: boolean
     status_titulo: string | null
     installment_label: string
+    document_type: string | null
 }
 
-export default function NFSPage({ timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
-    const [invoices, setInvoices] = useState<MappedInvoice[]>([])
+export default function AccountsPayablePage({ timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
+    const [payables, setPayables] = useState<MappedPayable[]>([])
     const [loading, setLoading] = useState(true)
 
     // Sorting state
@@ -42,10 +42,11 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
         project_name: '',
         category_description: '',
         installment_label: '',
-        valor_documento: ''
+        valor_documento: '',
+        status_titulo: ''
     })
 
-    const fetchInvoices = useCallback(async () => {
+    const fetchPayables = useCallback(async () => {
         setLoading(true)
         try {
             let startDate: string
@@ -68,7 +69,7 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
             }
 
-            console.log('Fetching NFS financial_movements from', startDate, 'to', endDate)
+            console.log('Fetching accounts_payable from', startDate, 'to', endDate)
 
             // 0. Fetch Projects and Categories (Manual Join)
             const { data: projectsRaw } = await supabase.from('projects').select('code, name')
@@ -77,7 +78,8 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
             const { data: categoriesRaw } = await supabase.from('categories').select('code, description')
             const categoryMap = new Map(categoriesRaw?.map((c: any) => [c.code, c.description]) || [])
 
-            // Query financial_movements with document_type = 'NFS' and Saida (S)
+
+            // Query financial_movements for Saidas (S)
             let query = supabase
                 .from('financial_movements')
                 .select(`
@@ -98,7 +100,6 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                     document_type,
                     natureza
                 `)
-                .eq('document_type', 'NFS')
                 .eq('natureza', 'S')
 
             if (selectedProject) {
@@ -111,10 +112,10 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                 .order('data_pagamento', { ascending: false })
 
             const rawData = await fetchAll<FinancialMovement>(query)
+            console.log('financial_movements fetched:', rawData?.length || 0, 'records')
 
             // Map data for display
-            const mappedData: MappedInvoice[] = rawData?.map(item => {
-                const isPaid = item.liquidado || item.status === 'PAGO' || item.status === 'LIQUIDADO'
+            const mappedData: MappedPayable[] = rawData?.map(item => {
                 const displayDate = item.data_pagamento || item.data_vencimento || item.data_emissao || ''
 
                 // Build installment label
@@ -132,23 +133,23 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                     valor_documento: Number(item.valor_pago || item.valor_liquido || item.valor_titulo) || 0,
                     project_name: projectMap.get(item.project_code || '') || 'N/A',
                     category_description: categoryMap.get(item.category_code || '') || 'N/A',
-                    is_paid: isPaid,
                     status_titulo: item.status,
-                    installment_label: installmentLabel
+                    installment_label: installmentLabel,
+                    document_type: item.document_type
                 }
             }) || []
 
-            setInvoices(mappedData)
+            setPayables(mappedData)
         } catch (err) {
-            console.error('Error fetching NFS data:', err)
+            console.error('Error fetching accounts_payable data:', err)
         } finally {
             setLoading(false)
         }
     }, [timeRange, customDates, selectedProject])
 
     useEffect(() => {
-        fetchInvoices()
-    }, [fetchInvoices])
+        fetchPayables()
+    }, [fetchPayables])
 
     // Filter and Sort Logic
     const handleSort = (field: SortField) => {
@@ -172,17 +173,17 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
         setFilters(prev => ({ ...prev, [field]: '' }))
     }
 
-    const filteredAndSortedInvoices = useMemo(() => {
-        let result = [...invoices]
+    const filteredAndSortedPayables = useMemo(() => {
+        let result = [...payables]
 
         Object.entries(filters).forEach(([field, value]) => {
             if (value) {
-                result = result.filter(invoice => {
+                result = result.filter(payable => {
                     let fieldValue = ''
                     if (field === 'display_date') {
-                        fieldValue = invoice.display_date ? format(parseISO(invoice.display_date), 'dd/MM/yyyy') : ''
+                        fieldValue = payable.display_date ? format(parseISO(payable.display_date), 'dd/MM/yyyy') : ''
                     } else {
-                        fieldValue = String((invoice as any)[field] || '')
+                        fieldValue = String((payable as any)[field] || '')
                     }
                     return fieldValue.toLowerCase().includes(value.toLowerCase())
                 })
@@ -203,31 +204,31 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
             })
         }
         return result
-    }, [invoices, filters, sortField, sortDirection])
+    }, [payables, filters, sortField, sortDirection])
 
     const totalAmount = useMemo(() => {
-        return filteredAndSortedInvoices.reduce((sum, inv) => sum + (Number(inv.valor_documento) || 0), 0)
-    }, [filteredAndSortedInvoices])
+        return filteredAndSortedPayables.reduce((sum, item) => sum + (Number(item.valor_documento) || 0), 0)
+    }, [filteredAndSortedPayables])
 
     const CHART_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316']
 
     const categoryChartData = useMemo(() => {
         const categoryMap = new Map<string, number>()
-        filteredAndSortedInvoices.forEach(inv => {
-            const cat = inv.category_description || 'Sem Categoria'
-            categoryMap.set(cat, (categoryMap.get(cat) || 0) + (Number(inv.valor_documento) || 0))
+        filteredAndSortedPayables.forEach(item => {
+            const cat = item.category_description || 'Sem Categoria'
+            categoryMap.set(cat, (categoryMap.get(cat) || 0) + (Number(item.valor_documento) || 0))
         })
         return Array.from(categoryMap, ([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value)
             .slice(0, 10)
-    }, [filteredAndSortedInvoices])
+    }, [filteredAndSortedPayables])
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('pt-BR', {
             style: 'currency',
             currency: 'BRL',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
         }).format(value)
     }
 
@@ -248,8 +249,8 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                 selectedProject={selectedProject}
                 setSelectedProject={setSelectedProject}
                 projects={projects}
-                title="Notas Fiscais de Serviços (NFS)"
-                subtitle="Mapeamento e visualização de notas de serviços prestados"
+                title="Contas a Pagar"
+                subtitle="Gestão de pagamentos e obrigações financeiras"
                 loading={loading}
             />
 
@@ -257,9 +258,11 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total do Período</p>
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider flex items-center gap-2">
+                            <Banknote className="w-4 h-4" /> Total a Pagar / Pago
+                        </p>
                         <p className="text-3xl font-bold mt-1 text-white">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAmount)}
+                            {formatCurrency(totalAmount)}
                         </p>
                     </div>
                 </div>
@@ -334,12 +337,12 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                                 <tr>
                                     <th className="px-4 py-3 text-left w-[110px]">
                                         <button onClick={() => handleSort('display_date')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Data <SortIcon field="display_date" />
+                                            Vencimento <SortIcon field="display_date" />
                                         </button>
                                     </th>
                                     <th className="px-4 py-3 text-left">
                                         <button onClick={() => handleSort('numero_documento')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Nº Documento <SortIcon field="numero_documento" />
+                                            Documento <SortIcon field="numero_documento" />
                                         </button>
                                     </th>
                                     <th className="px-4 py-3 text-left min-w-[220px]">
@@ -353,8 +356,8 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                                         </button>
                                     </th>
                                     <th className="px-4 py-3 text-left">
-                                        <button onClick={() => handleSort('installment_label')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
-                                            Parcela <SortIcon field="installment_label" />
+                                        <button onClick={() => handleSort('status_titulo')} className="flex items-center gap-2 text-sm font-semibold hover:text-primary-app transition-colors">
+                                            Status <SortIcon field="status_titulo" />
                                         </button>
                                     </th>
                                     <th className="px-4 py-3 text-right w-[110px]">
@@ -439,12 +442,12 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                                             <input
                                                 type="text"
                                                 placeholder="Filtrar..."
-                                                value={filters.installment_label}
-                                                onChange={(e) => handleFilterChange('installment_label', e.target.value)}
+                                                value={filters.status_titulo}
+                                                onChange={(e) => handleFilterChange('status_titulo', e.target.value)}
                                                 className="w-full pl-7 pr-6 py-1 text-xs bg-background/50 border border-border-app rounded focus:outline-none focus:ring-1 focus:ring-primary-app"
                                             />
-                                            {filters.installment_label && (
-                                                <button onClick={() => clearFilter('installment_label')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                                            {filters.status_titulo && (
+                                                <button onClick={() => clearFilter('status_titulo')} className="absolute right-2 top-1/2 -translate-y-1/2">
                                                     <X className="w-3 h-3 text-muted-foreground hover:text-foreground" />
                                                 </button>
                                             )}
@@ -470,41 +473,44 @@ export default function NFSPage({ timeRange, setTimeRange, customDates, setCusto
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredAndSortedInvoices.length === 0 ? (
+                                {filteredAndSortedPayables.length === 0 ? (
                                     <tr>
                                         <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                                             Nenhum registro encontrado.
                                         </td>
                                     </tr>
                                 ) : (
-                                    filteredAndSortedInvoices.map((invoice) => (
-                                        <tr key={invoice.id} className="border-b border-border-app/50 hover:bg-muted-app/30 transition-colors">
+                                    filteredAndSortedPayables.map((item) => (
+                                        <tr key={item.id} className="border-b border-border-app/50 hover:bg-muted-app/30 transition-colors">
                                             <td className="px-4 py-3 text-sm">
                                                 <div className="flex items-center gap-2">
-                                                    <span>{invoice.display_date ? format(parseISO(invoice.display_date), 'dd/MM/yyyy') : '-'}</span>
-                                                    {invoice.is_paid && <span className="text-xs text-green-500">💰</span>}
+                                                    <span>{item.display_date ? format(parseISO(item.display_date), 'dd/MM/yyyy') : '-'}</span>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-sm font-mono">
-                                                {invoice.numero_documento || invoice.numero_documento_fiscal || '-'}
+                                                {item.numero_documento || item.numero_documento_fiscal || '-'}
+                                                {item.document_type && <span className="ml-2 text-[10px] bg-white/10 px-1 rounded">{item.document_type}</span>}
                                             </td>
                                             <td className="px-4 py-3 text-sm">
                                                 <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-medium border border-blue-500/20">
-                                                    {invoice.category_description || '-'}
+                                                    {item.category_description || '-'}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-sm">
-                                                {invoice.project_name}
+                                                {item.project_name}
                                             </td>
                                             <td className="px-4 py-3 text-sm">
-                                                {invoice.installment_label && (
-                                                    <span className="text-[10px] text-primary-app font-bold uppercase tracking-wider">
-                                                        {invoice.installment_label}
-                                                    </span>
-                                                )}
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border
+                                                    ${item.status_titulo === 'LIQUIDADO' ? 'text-green-400 bg-green-500/10 border-green-500/20' :
+                                                        item.status_titulo === 'ATRASADO' ? 'text-red-400 bg-red-500/10 border-red-500/20' :
+                                                            'text-yellow-400 bg-yellow-500/10 border-yellow-500/20'
+                                                    }`}
+                                                >
+                                                    {item.status_titulo}
+                                                </span>
                                             </td>
                                             <td className="px-4 py-3 text-sm text-right font-semibold">
-                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(invoice.valor_documento || 0)}
+                                                {formatCurrency(item.valor_documento || 0)}
                                             </td>
                                         </tr>
                                     ))
