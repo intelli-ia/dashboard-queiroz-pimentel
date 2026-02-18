@@ -293,7 +293,7 @@ export default function AccountsPayablePage({
                     </div>
                     <div className="h-[280px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={categoryChartData} margin={{ top: 10, right: 10, left: 10, bottom: 60 }}>
+                            <BarChart data={categoryChartData} margin={{ top: 40, right: 10, left: 10, bottom: 60 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
                                 <XAxis
                                     dataKey="name"
@@ -306,7 +306,8 @@ export default function AccountsPayablePage({
                                 <YAxis
                                     tick={{ fill: '#94a3b8', fontSize: 10 }}
                                     tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
-                                    width={60}
+                                    width={70}
+                                    domain={[0, (dataMax: number | string) => (typeof dataMax === 'number' ? dataMax * 1.15 : dataMax)]}
                                 />
                                 <Tooltip
                                     cursor={false}
@@ -444,12 +445,12 @@ export default function AccountsPayablePage({
                                         </td>
                                         <td className="px-4 py-3 text-sm">
                                             <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase border ${item.status_titulo === 'LIQUIDADO'
-                                                    ? 'bg-green-500/10 text-green-500 border-green-500/20'
-                                                    : item.status_titulo === 'ABERTO'
-                                                        ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
-                                                        : item.status_titulo === 'ATRASADO'
-                                                            ? 'bg-red-500/10 text-red-500 border-red-500/20'
-                                                            : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                                                ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                                                : item.status_titulo === 'ABERTO'
+                                                    ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
+                                                    : item.status_titulo === 'ATRASADO'
+                                                        ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                                                        : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
                                                 }`}>
                                                 {item.status_titulo || 'N/A'}
                                             </span>

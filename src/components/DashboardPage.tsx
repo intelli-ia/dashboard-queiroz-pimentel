@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Loader2, Banknote, TrendingUp, Hash, Calculator, FileText, PieChart as PieChartIcon } from 'lucide-react'
+import { Loader2, Banknote, TrendingUp, Hash, Calculator, FileText, PieChart as PieChartIcon, LayoutDashboard } from 'lucide-react'
 import {
   AreaChart, Area, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -81,15 +81,22 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
           document_type,
           project_code,
           grupo,
-          direcao
+          direcao,
+          is_efetivado
         `)
+        .eq('direcao', 'SAIDA')
+        .eq('is_efetivado', true)
+        .not('data_pagamento', 'is', null)
         .gte('data_pagamento', startDate)
         .lte('data_pagamento', endDate)
         .order('data_pagamento', { ascending: true })
 
+      // Retirado filtro por projeto para permitir exibição completa no gráfico de projetos com highlight
+      /*
       if (selectedProject) {
         query = query.eq('project_code', selectedProject)
       }
+      */
 
       const rawData = await fetchAll<FinancialMovement>(query)
 
@@ -114,9 +121,12 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
         .gte('data_vencimento', startDate)
         .lte('data_vencimento', endDate)
 
+      // Retirado filtro por projeto
+      /*
       if (selectedProject) {
         receivablesQuery = receivablesQuery.eq('project_code', selectedProject)
       }
+      */
 
       const receivablesData = await fetchAll<AccountReceivable>(receivablesQuery)
       setReceivables(receivablesData || [])
@@ -125,7 +135,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
     } finally {
       setLoading(false)
     }
-  }, [timeRange, customDates, selectedProject])
+  }, [timeRange, customDates]) // Removido selectedProject das dependências de busca, pois o filtro agora é local
 
   useEffect(() => {
     fetchDashboardData()
@@ -134,41 +144,45 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
   // KPI 1: Total Pagamentos - soma APENAS do campo valor_pago de SAIDAS
   const totalPagamentos = useMemo(() => {
     return movements
-      .filter(m => m.direcao === 'SAIDA' || m.natureza === 'S')
+      .filter(m => !selectedProject || m.project_code === selectedProject)
       .reduce((sum, m) => sum + (m.valor_pago || 0), 0)
-  }, [movements])
+  }, [movements, selectedProject])
 
   // KPI 2: Total Receitas (da tabela accounts_receivable)
   const totalReceitas = useMemo(() => {
-    return receivables.reduce((sum, r) => sum + (r.valor_documento || 0), 0)
-  }, [receivables])
+    return receivables
+      .filter(r => !selectedProject || r.project_code === selectedProject)
+      .reduce((sum, r) => sum + (r.valor_documento || 0), 0)
+  }, [receivables, selectedProject])
 
   // KPI 3: Total Transacoes
-  const totalTransacoes = useMemo(() => movements.length, [movements])
+  const totalTransacoes = useMemo(() =>
+    movements.filter(m => !selectedProject || m.project_code === selectedProject).length,
+    [movements, selectedProject])
 
   // KPI 4: Custo Medio Mensal
   const custoMedioMensal = useMemo(() => {
     const monthlyTotals = new Map<string, number>()
     movements
-      .filter(m => (m.direcao === 'SAIDA' || m.natureza === 'S') && m.data_pagamento)
+      .filter(m => !selectedProject || m.project_code === selectedProject)
       .forEach(m => {
         const monthKey = m.data_pagamento!.substring(0, 7)
-        const valor = m.valor_pago || m.valor_liquido || m.valor_titulo || 0
+        const valor = m.valor_pago || 0
         monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) || 0) + valor)
       })
     const totalMonths = monthlyTotals.size
     const totalValue = Array.from(monthlyTotals.values()).reduce((a, b) => a + b, 0)
     return totalMonths > 0 ? totalValue / totalMonths : 0
-  }, [movements])
+  }, [movements, selectedProject])
 
   // Line Chart Data: Monthly paid values
   const monthlyChartData = useMemo(() => {
     const monthlyMap = new Map<string, number>()
     movements
-      .filter(m => (m.direcao === 'SAIDA' || m.natureza === 'S') && m.data_pagamento)
+      .filter(m => !selectedProject || m.project_code === selectedProject)
       .forEach(m => {
         const monthKey = m.data_pagamento!.substring(0, 7)
-        const valor = m.valor_pago || m.valor_liquido || m.valor_titulo || 0
+        const valor = m.valor_pago || 0
         monthlyMap.set(monthKey, (monthlyMap.get(monthKey) || 0) + valor)
       })
     return Array.from(monthlyMap, ([month, value]) => ({
@@ -176,32 +190,32 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
       monthSort: month,
       value
     })).sort((a, b) => a.monthSort.localeCompare(b.monthSort))
-  }, [movements])
+  }, [movements, selectedProject])
 
   // Pie Chart 1: Payments by Category
   const categoryChartData = useMemo(() => {
     const categoryMap = new Map<string, number>()
     movements
-      .filter(m => m.direcao === 'SAIDA' || m.natureza === 'S')
+      .filter(m => !selectedProject || m.project_code === selectedProject)
       .forEach(m => {
         const cat = m.category_description || 'Sem Categoria'
-        const valor = m.valor_pago || m.valor_liquido || m.valor_titulo || 0
+        const valor = m.valor_pago || 0
         categoryMap.set(cat, (categoryMap.get(cat) || 0) + valor)
       })
     return Array.from(categoryMap, ([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8)
-  }, [movements])
+  }, [movements, selectedProject])
 
   // Interactive Area Chart Data: Daily cost over time
   const interactiveChartData = useMemo(() => {
     // 1. Group daily
     const dailyMap = new Map<string, number>()
     movements
-      .filter(m => (m.direcao === 'SAIDA' || m.natureza === 'S') && m.data_pagamento)
+      .filter(m => !selectedProject || m.project_code === selectedProject)
       .forEach(m => {
         const dateKey = m.data_pagamento!
-        const valor = m.valor_pago || m.valor_liquido || m.valor_titulo || 0
+        const valor = m.valor_pago || 0
         dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + valor)
       })
 
@@ -218,21 +232,43 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
     const startDate = subDays(referenceDate, daysToSubtract)
     const resultData = allDays.filter(item => parseISO(item.date) >= startDate)
     return resultData
-  }, [movements, interactiveTimeRange])
+  }, [movements, interactiveTimeRange, selectedProject])
 
   // Pie Chart 2: Payments by Document Type
   const documentTypeChartData = useMemo(() => {
     const docTypeMap = new Map<string, number>()
     movements
-      .filter(m => m.direcao === 'SAIDA' || m.natureza === 'S')
+      .filter(m => !selectedProject || m.project_code === selectedProject)
       .forEach(m => {
         const docType = m.document_type || 'Outros'
-        const valor = m.valor_pago || m.valor_liquido || m.valor_titulo || 0
+        const valor = m.valor_pago || 0
         docTypeMap.set(docType, (docTypeMap.get(docType) || 0) + valor)
       })
     return Array.from(docTypeMap, ([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
-  }, [movements])
+  }, [movements, selectedProject])
+
+  // Bar Chart 1: Payments by Project
+  const projectChartData = useMemo(() => {
+    const projectMap = new Map(projects.map(p => [p.id, p.name]))
+    const projectTotals = new Map<string, { name: string; value: number; id: string }>()
+
+    movements.forEach(m => {
+      const pCode = m.project_code || 'Sem Projeto'
+      const projectName = projectMap.get(m.project_code || '') || 'Sem Projeto'
+      const valor = m.valor_pago || 0
+
+      if (!projectTotals.has(pCode)) {
+        projectTotals.set(pCode, { name: projectName, value: 0, id: pCode })
+      }
+      projectTotals.get(pCode)!.value += valor
+    })
+
+    return Array.from(projectTotals.values())
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+  }, [movements, projects])
+
 
   const docTypeLabels: Record<string, string> = {
     'NFE': 'Nota Fiscal Eletronica',
@@ -267,8 +303,8 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
             <Banknote className="w-4 h-4" />
             Pagamentos
           </div>
-          <div className="text-3xl font-bold text-white">{formatCurrency(totalPagamentos)}</div>
-          <p className="text-xs text-muted-foreground">Saidas liquidadas no periodo</p>
+          <div className="text-2xl font-bold text-white">{formatCurrency(totalPagamentos)}</div>
+          <p className="text-sm text-muted-foreground">Saídas liquidadas no período</p>
         </div>
 
         {/* Receitas */}
@@ -277,28 +313,28 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
             <TrendingUp className="w-4 h-4" />
             Receitas
           </div>
-          <div className="text-3xl font-bold text-green-400">{formatCurrency(totalReceitas)}</div>
-          <p className="text-xs text-muted-foreground">Contas a receber no periodo</p>
+          <div className="text-2xl font-bold text-green-400">{formatCurrency(totalReceitas)}</div>
+          <p className="text-sm text-muted-foreground">Contas a Receber no período</p>
         </div>
 
         {/* Transacoes */}
         <div className="glass p-6 rounded-2xl space-y-2">
           <div className="flex items-center gap-2 text-indigo-400 text-sm font-medium uppercase tracking-wider">
             <Hash className="w-4 h-4" />
-            Transacoes
+            Transações
           </div>
-          <div className="text-3xl font-bold text-indigo-400">{totalTransacoes.toLocaleString('pt-BR')}</div>
-          <p className="text-xs text-muted-foreground">Total de movimentacoes</p>
+          <div className="text-2xl font-bold text-indigo-400">{totalTransacoes.toLocaleString('pt-BR')}</div>
+          <p className="text-sm text-muted-foreground">Total de pagamentos efetivados</p>
         </div>
 
         {/* Custo Medio Mensal */}
         <div className="glass p-6 rounded-2xl space-y-2">
           <div className="flex items-center gap-2 text-orange-400 text-sm font-medium uppercase tracking-wider">
             <Calculator className="w-4 h-4" />
-            Custo Medio Mensal
+            Custo Médio Mensal
           </div>
-          <div className="text-3xl font-bold text-orange-400">{formatCurrency(custoMedioMensal)}</div>
-          <p className="text-xs text-muted-foreground">Media de saidas por mes</p>
+          <div className="text-2xl font-bold text-orange-400">{formatCurrency(custoMedioMensal)}</div>
+          <p className="text-sm text-muted-foreground">Média de saídas por mês</p>
         </div>
       </div>
 
@@ -317,8 +353,8 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-primary-app" />
                 <div>
-                  <h3 className="text-lg font-semibold text-white">Custo por Tempo (Diário)</h3>
-                  <p className="text-xs text-muted-foreground">Evolução diária dos pagamentos efetivados</p>
+                  <h3 className="text-lg font-semibold text-white">Custo Diário</h3>
+                  <p className="text-sm text-muted-foreground">Evolução diária dos pagamentos efetivados</p>
                 </div>
               </div>
               <select
@@ -530,7 +566,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
                   <BarChart
                     data={documentTypeChartData}
                     layout="vertical"
-                    margin={{ top: 5, right: 80, left: 40, bottom: 5 }}
+                    margin={{ top: 5, right: 100, left: 40, bottom: 5 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
                     <XAxis type="number" hide />
@@ -584,7 +620,78 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
               </div>
             </div>
           )}
+
         </div>
+      )}
+
+      {/* Project Costs Chart (Full Width) */}
+      {!loading && projectChartData.length > 0 && (
+        <div className="glass rounded-xl p-6 flex flex-col mt-6">
+          <div className="flex items-center gap-2 mb-6">
+            <LayoutDashboard className="w-5 h-5 text-primary-app" />
+            <h3 className="text-lg font-semibold">Pagamentos por Projeto</h3>
+          </div>
+          <div className="h-[480px] w-full mt-auto">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={projectChartData}
+                layout="vertical"
+                margin={{ top: 5, right: 150, left: 40, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
+                <XAxis type="number" hide />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  tick={{ fill: '#94a3b8', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={150}
+                />
+                <Tooltip
+                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-2xl backdrop-blur-md bg-opacity-90">
+                          <p className="text-white font-semibold text-sm mb-1">
+                            {payload[0].payload.name}
+                          </p>
+                          <p className="text-primary-app font-bold text-lg">
+                            {formatCurrency(payload[0].value as number)}
+                          </p>
+                        </div>
+                      )
+                    }
+                    return null
+                  }}
+                />
+                <Bar
+                  dataKey="value"
+                  radius={[0, 4, 4, 0]}
+                  barSize={24}
+                >
+                  {projectChartData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={CHART_COLORS[index % CHART_COLORS.length]}
+                      fillOpacity={!selectedProject || selectedProject === entry.id ? 1 : 0.3}
+                    />
+                  ))}
+                  <LabelList
+                    dataKey="value"
+                    position="right"
+                    style={{ fill: '#fff', fontSize: 11, fontWeight: 'bold' }}
+                    formatter={(val: number) => {
+                      return ` ${formatCurrency(val)}`
+                    }}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
       )}
     </div>
   )

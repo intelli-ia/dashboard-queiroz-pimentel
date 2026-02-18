@@ -134,6 +134,14 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 }
             }
 
+            // Unify logic for Movimentos Financeiros to match Dashboard Payments
+            if (title === 'Movimentos Financeiros') {
+                query = query
+                    .eq('direcao', 'SAIDA')
+                    .eq('is_efetivado', true)
+                    .not('data_pagamento', 'is', null)
+            }
+
             query = query
                 .gte('data_pagamento', startDate)
                 .lte('data_pagamento', endDate)
@@ -248,20 +256,24 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
     }, [movements])
 
     const totals = useMemo(() => {
-        // Filter only efetivated movements for KPIs
-        const efetivados = filteredMovements.filter(m => m.is_efetivado)
+        const total = filteredMovements.reduce((acc, curr) => acc + curr.valor_documento, 0)
+
+        // Calculate monthly average
+        const monthlyTotals = new Map<string, number>()
+        filteredMovements.forEach(m => {
+            const date = m.display_date || ''
+            if (date) {
+                const monthKey = date.substring(0, 7)
+                monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) || 0) + m.valor_documento)
+            }
+        })
+
+        const totalMonths = monthlyTotals.size
+        const mediaMensal = totalMonths > 0 ? total / totalMonths : 0
 
         return {
-            entradas: efetivados
-                .filter(m => m.direcao === 'ENTRADA')
-                .reduce((acc, curr) => acc + curr.valor_documento, 0),
-            saidas: efetivados
-                .filter(m => m.direcao === 'SAIDA')
-                .reduce((acc, curr) => acc + curr.valor_documento, 0),
-            saldo: efetivados.reduce((acc, curr) => {
-                return acc + (curr.direcao === 'ENTRADA' ? curr.valor_documento : -curr.valor_documento)
-            }, 0),
-            total: efetivados.reduce((acc, curr) => acc + curr.valor_documento, 0)
+            total,
+            mediaMensal
         }
     }, [filteredMovements])
 
@@ -303,40 +315,24 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
             />
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Entradas</p>
-                        <p className="text-3xl font-bold mt-1 text-green-400">
-                            {formatCurrency(totals.entradas)}
-                        </p>
-                    </div>
-                </div>
-
-                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
-                    <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Saídas</p>
-                        <p className="text-3xl font-bold mt-1 text-orange-400">
-                            {formatCurrency(totals.saidas)}
-                        </p>
-                    </div>
-                </div>
-
-                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
-                    <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Saldo</p>
-                        <p className={`text-3xl font-bold mt-1 ${totals.saldo >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {formatCurrency(totals.saldo)}
-                        </p>
-                    </div>
-                </div>
-
-                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
-                    <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total Movimentado</p>
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total de Pagamentos</p>
                         <p className="text-3xl font-bold mt-1 text-white">
                             {formatCurrency(totals.total)}
                         </p>
+                        <p className="text-md text-muted-foreground mt-1">Saídas efetivadas no período</p>
+                    </div>
+                </div>
+
+                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
+                    <div className="relative z-10">
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Média Mensal</p>
+                        <p className="text-3xl font-bold mt-1 text-orange-400">
+                            {formatCurrency(totals.mediaMensal)}
+                        </p>
+                        <p className="text-md text-muted-foreground mt-1">Média de pagamentos por mês</p>
                     </div>
                 </div>
             </div>
@@ -350,7 +346,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                     </div>
                     <div className="h-[280px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={categoryChartData} margin={{ top: 10, right: 10, left: 10, bottom: 60 }}>
+                            <BarChart data={categoryChartData} margin={{ top: 40, right: 10, left: 10, bottom: 60 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
                                 <XAxis
                                     dataKey="name"
@@ -363,7 +359,8 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                 <YAxis
                                     tick={{ fill: '#94a3b8', fontSize: 10 }}
                                     tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
-                                    width={60}
+                                    width={70}
+                                    domain={[0, (dataMax: number | string) => (typeof dataMax === 'number' ? dataMax * 1.15 : dataMax)]}
                                 />
                                 <Tooltip
                                     cursor={false}
