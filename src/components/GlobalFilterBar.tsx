@@ -52,14 +52,23 @@ export default function GlobalFilterBar({
       <div className="px-4 md:px-8 py-4 space-y-4">
         {/* Title Row */}
         {(title || subtitle) && (
-          <div className="flex items-center gap-4">
-            <div>
-              {title && <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{title}</h1>}
-              {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div>
+                {title && <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{title}</h1>}
+                {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+              </div>
+              {loading && (
+                <RefreshCcw className="w-5 h-5 animate-spin text-primary-app/50" />
+              )}
             </div>
-            {loading && (
-              <RefreshCcw className="w-5 h-5 animate-spin text-primary-app/50" />
-            )}
+
+            {/* Selected Project Name on the right side */}
+            <div className="hidden md:block text-right">
+              <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary-app">
+                {selectedProjectName}
+              </h1>
+            </div>
           </div>
         )}
 
@@ -114,8 +123,8 @@ export default function GlobalFilterBar({
                   key={range}
                   onClick={() => setTimeRange(range)}
                   className={`min-w-[45px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === range
-                      ? 'bg-primary-app text-white shadow-lg'
-                      : 'text-muted-foreground hover:text-white'
+                    ? 'bg-primary-app text-white shadow-lg'
+                    : 'text-muted-foreground hover:text-white'
                     }`}
                 >
                   {range}D
@@ -124,8 +133,8 @@ export default function GlobalFilterBar({
               <button
                 onClick={() => setTimeRange('thisYear')}
                 className={`min-w-[85px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'thisYear'
-                    ? 'bg-primary-app text-white shadow-lg'
-                    : 'text-muted-foreground hover:text-white'
+                  ? 'bg-primary-app text-white shadow-lg'
+                  : 'text-muted-foreground hover:text-white'
                   }`}
               >
                 Este ano
@@ -133,8 +142,8 @@ export default function GlobalFilterBar({
               <button
                 onClick={() => setTimeRange('all')}
                 className={`min-w-[75px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'all'
-                    ? 'bg-primary-app text-white shadow-lg'
-                    : 'text-muted-foreground hover:text-white'
+                  ? 'bg-primary-app text-white shadow-lg'
+                  : 'text-muted-foreground hover:text-white'
                   }`}
               >
                 Todas
@@ -142,8 +151,8 @@ export default function GlobalFilterBar({
               <button
                 onClick={() => setTimeRange('custom')}
                 className={`min-w-[80px] px-3 py-1.5 text-sm rounded-md transition-all whitespace-nowrap ${timeRange === 'custom'
-                    ? 'bg-primary-app text-white shadow-lg'
-                    : 'text-muted-foreground hover:text-white'
+                  ? 'bg-primary-app text-white shadow-lg'
+                  : 'text-muted-foreground hover:text-white'
                   }`}
               >
                 Período
