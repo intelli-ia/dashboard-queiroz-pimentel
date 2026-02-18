@@ -25,6 +25,12 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
+const formatCompact = (value: number) => {
+  if (value >= 1000000) return (value / 1000000).toFixed(1).replace('.', ',') + 'M'
+  if (value >= 1000) return (value / 1000).toFixed(0) + 'K'
+  return value.toString()
+}
+
 interface MovementWithCategory extends FinancialMovement {
   category_description?: string
 }
@@ -519,7 +525,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
                         <ul className="grid grid-cols-2 gap-x-8 gap-y-2 mt-4 px-4">
                           {props.payload?.map((entry: any, index: number) => {
                             const val = entry.payload.value
-                            const formattedVal = val >= 1000 ? (val / 1000).toFixed(0) + 'K' : val
+                            const formattedVal = formatCompact(val)
                             return (
                               <li key={`item-${index}`} className="flex items-center justify-between border-b border-white/5 pb-1">
                                 <div className="flex items-center gap-2 overflow-hidden">
@@ -610,8 +616,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
                         position="right"
                         style={{ fill: '#fff', fontSize: 11, fontWeight: 'bold' }}
                         formatter={(val: number) => {
-                          const formattedVal = val >= 1000 ? (val / 1000).toFixed(0) + 'K' : val
-                          return ` ${formattedVal}`
+                          return ` ${formatCompact(val)}`
                         }}
                       />
                     </Bar>
@@ -683,7 +688,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
                     position="right"
                     style={{ fill: '#fff', fontSize: 11, fontWeight: 'bold' }}
                     formatter={(val: number) => {
-                      return ` ${formatCurrency(val)}`
+                      return ` ${formatCompact(val)}`
                     }}
                   />
                 </Bar>

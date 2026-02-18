@@ -280,15 +280,32 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
     const CHART_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316']
 
     const categoryChartData = useMemo(() => {
-        const categoryMap = new Map<string, number>()
-        filteredMovements.forEach(item => {
-            const cat = item.category_description || 'Sem Categoria'
-            categoryMap.set(cat, (categoryMap.get(cat) || 0) + (Number(item.valor_documento) || 0))
+        // Filter by all fields EXCEPT category_description to keep context in chart
+        let chartBase = [...movements]
+        Object.keys(filters).forEach(key => {
+            if (key === 'category_description') return // Skip category filter
+            const searchValue = filters[key]?.trim()
+            if (searchValue) {
+                chartBase = chartBase.filter(item => {
+                    const itemValue = String((item as any)[key] || '').trim()
+                    if (['tipo_movimento', 'direcao', 'project_name', 'status_titulo'].includes(key)) {
+                        return itemValue === searchValue
+                    } else {
+                        return itemValue.toLowerCase().includes(searchValue.toLowerCase())
+                    }
+                })
+            }
         })
-        return Array.from(categoryMap, ([name, value]) => ({ name, value }))
+
+        const categoryTotals = new Map<string, number>()
+        chartBase.forEach(item => {
+            const cat = item.category_description || 'Sem Categoria'
+            categoryTotals.set(cat, (categoryTotals.get(cat) || 0) + (Number(item.valor_documento) || 0))
+        })
+        return Array.from(categoryTotals, ([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value)
             .slice(0, 10)
-    }, [filteredMovements])
+    }, [movements, filters])
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -297,6 +314,12 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
         }).format(value)
+    }
+
+    const formatCompactBRL = (value: number) => {
+        if (value >= 1000000) return `R$ ${(value / 1000000).toFixed(1).replace('.', ',')}M`
+        if (value >= 1000) return `R$ ${(value / 1000).toFixed(0)}k`
+        return `R$ ${value}`
     }
 
     return (
@@ -358,7 +381,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                 />
                                 <YAxis
                                     tick={{ fill: '#94a3b8', fontSize: 10 }}
-                                    tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
+                                    tickFormatter={formatCompactBRL}
                                     width={70}
                                     domain={[0, (dataMax: number | string) => (typeof dataMax === 'number' ? dataMax * 1.15 : dataMax)]}
                                 />
@@ -379,13 +402,17 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                     }}
                                 />
                                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                                    {categoryChartData.map((_, index) => (
-                                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                                    {categoryChartData.map((entry, index) => (
+                                        <Cell
+                                            key={`cell-${index}`}
+                                            fill={CHART_COLORS[index % CHART_COLORS.length]}
+                                            fillOpacity={!filters.category_description || filters.category_description === entry.name ? 1 : 0.3}
+                                        />
                                     ))}
                                     <LabelList
                                         dataKey="value"
                                         position="top"
-                                        formatter={(value: number) => `R$ ${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
+                                        formatter={formatCompactBRL}
                                         style={{ fill: '#e2e8f0', fontSize: 12, fontWeight: 600 }}
                                     />
                                 </Bar>
