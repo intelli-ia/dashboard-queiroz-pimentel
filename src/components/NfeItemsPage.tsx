@@ -226,15 +226,7 @@ export default function NfeItemsPage({
             />
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="glass p-6 rounded-2xl space-y-2 relative overflow-hidden group">
-                    <div className="flex items-center gap-2 text-muted-foreground text-sm font-medium uppercase tracking-wider text-blue-400">
-                        <DollarSign className="w-4 h-4" /> Total Gasto
-                    </div>
-                    <div className="text-3xl font-bold text-white">{formatCurrency(totalSpent)}</div>
-                    <p className="text-sm text-muted-foreground">Soma total dos itens filtrados</p>
-                </div>
-
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="glass p-6 rounded-2xl space-y-2 relative overflow-hidden group">
                     <div className="flex items-center gap-2 text-muted-foreground text-sm font-medium uppercase tracking-wider text-green-400">
                         <ShoppingBag className="w-4 h-4" /> Mais Comprado (Volume)
