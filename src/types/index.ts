@@ -44,6 +44,10 @@ export interface AccountPayable {
   valor_inss: number | null
   valor_ir: number | null
   valor_iss: number | null
+  valor_pis: number | null
+  valor_cofins: number | null
+  valor_csll: number | null
+  project_name: string | null
   // Metadata
   id_conta_corrente: number | null
   id_origem: string | null
@@ -71,6 +75,7 @@ export interface AccountReceivable {
   data_vencimento: string | null
   status_titulo: string  // Default: 'RECEBIDO'
   valor_documento: number | null
+  project_name: string | null
   // Tax retention flags
   retem_inss: boolean
   retem_ir: boolean
