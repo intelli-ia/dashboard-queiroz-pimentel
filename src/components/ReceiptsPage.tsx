@@ -448,7 +448,6 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                                         {sortConfig.key === 'valor_documento' && <ChevronDown className={`w-4 h-4 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />}
                                     </div>
                                 </th>
-                                <th className="px-6 py-4 font-medium">Parcela</th>
                                 <th className="px-6 py-4 font-medium text-right cursor-pointer hover:text-white" onClick={() => handleSort('status_titulo')}>
                                     <div className="flex items-center justify-end gap-1">
                                         Status
@@ -465,7 +464,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                                             {formatDate(receipt.data_vencimento)}
                                         </td>
                                         <td className="px-6 py-4 text-muted-foreground">
-                                            <span className="truncate max-w-[180px] block font-medium text-white" title={receipt.client_name}>
+                                            <span className="truncate max-w-[300px] block font-medium text-white" title={receipt.client_name}>
                                                 {receipt.client_name}
                                             </span>
                                         </td>
@@ -479,9 +478,6 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                                         </td>
                                         <td className="px-6 py-4 font-medium text-foreground-app">
                                             {formatCurrency(receipt.valor_documento || 0)}
-                                        </td>
-                                        <td className="px-6 py-4 text-muted-foreground">
-                                            {receipt.total_installments > 1 ? `${receipt.current_installment}/${receipt.total_installments}` : '-'}
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <select
@@ -506,7 +502,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
+                                    <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
                                         Nenhum lancamento encontrado para os filtros selecionados.
                                     </td>
                                 </tr>
