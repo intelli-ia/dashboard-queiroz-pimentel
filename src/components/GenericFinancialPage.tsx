@@ -141,13 +141,13 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 query = query.in('document_type', documentTypes)
                 // For non-general tabs, we usually want Saidas (Expenditures)
                 // unless it's the Receipts tab (which uses a different component)
-                if (title !== 'Movimentos Financeiros') {
+                if (title !== 'Movimentos') {
                     query = query.eq('natureza', 'S')
                 }
             }
 
-            // Unify logic for Movimentos Financeiros to match Dashboard Payments
-            if (title === 'Movimentos Financeiros') {
+            // Unify logic for Movimentos to match Dashboard Payments
+            if (title === 'Movimentos') {
                 query = query
                     .eq('direcao', 'SAIDA')
                     .eq('is_efetivado', true)
