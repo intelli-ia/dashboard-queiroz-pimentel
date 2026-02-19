@@ -147,6 +147,47 @@ export interface Client {
   inativo: boolean
 }
 
+// NFE Headers - Cabeçalho de Notas Fiscais
+export interface NfeHeader {
+  id_recebimento: number
+  id_fornecedor: number | null
+  cpf_cnpj: string | null
+  nome_fantasia: string | null
+  razao_social: string | null
+  numero_nfe: string | null
+  serie_nfe: string | null
+  chave_nfe: string | null
+  data_emissao: string | null
+  valor_nfe: number | null
+  project_code: string | null
+}
+
+// NFE Items - Itens das Notas Fiscais
+export interface NfeItem {
+  id_item: number
+  id_recebimento: number
+  codigo_produto: string | null
+  id_produto: number | null
+  descricao_produto: string | null
+  ncm: string | null
+  cfop: string | null
+  category_code: string | null
+  unidade: string | null
+  quantidade: number | null
+  preco_unitario: number | null
+  valor_total: number | null
+  desconto: number | null
+  sequencia: number | null
+  icms_origem: string | null
+  icms_sit_trib: string | null
+  ipi_enquadramento: string | null
+  ipi_sit_trib: string | null
+  pis_sit_trib: string | null
+  cofins_sit_trib: string | null
+  // Joined relation
+  headers?: NfeHeader
+}
+
 // Client lookup maps type for reuse
 export interface ClientMaps {
   byCodigoOmie: Map<number, Client>
