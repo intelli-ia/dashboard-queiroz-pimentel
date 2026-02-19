@@ -4,66 +4,55 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
-import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, BarChart3 } from 'lucide-react'
+import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, BarChart3, Banknote } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import GlobalFilterBar from './GlobalFilterBar'
 import { useClientContext } from '@/context/ClientContext'
-import { formatCpfCnpj } from '@/lib/cpf-cnpj-utils'
-import type { PageProps as BasePageProps, FinancialMovement } from '@/types'
+import { normalizeCpfCnpj } from '@/lib/cpf-cnpj-utils'
+import type { PageProps, AccountPayable } from '@/types'
 
-interface PageProps extends BasePageProps {
-    title: string
-    documentTypes?: string[]
-    fetchAllTypes?: boolean
-    includeKeywords?: string[]
-}
-
-type SortField = 'display_date' | 'client_name' | 'numero_documento' | 'tipo_movimento' | 'direcao' | 'category_description' | 'project_name' | 'valor_documento' | 'status_titulo'
+type SortField = keyof AccountPayable | 'category_description' | 'project_name_display'
 type SortDirection = 'asc' | 'desc' | null
 
-interface MappedMovement {
+interface MappedAccountPayable extends AccountPayable {
     id: number
-    numero_documento: string | null
-    display_date: string
-    cpf_cnpj_cliente: string | null
-    codigo_cliente: number | null
-    client_name: string
-    is_paid: boolean
-    status_titulo: string | null
-    valor_documento: number
-    project_name: string
     category_description: string
+    project_name_display: string
+    display_date: string
     installment_label: string
-    current_installment: number
-    tipo_movimento: string
-    direcao: string
-    is_efetivado: boolean
-    origem_descricao: string
+    client_name: string
+    client_cpf_cnpj: string
 }
 
-export default function GenericFinancialPage({ title, documentTypes, fetchAllTypes = false, timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
-    const [movements, setMovements] = useState<MappedMovement[]>([])
+export default function AccountsPayablePage({
+    timeRange,
+    setTimeRange,
+    customDates,
+    setCustomDates,
+    selectedProject,
+    setSelectedProject,
+    projects
+}: PageProps) {
+    const [payables, setPayables] = useState<MappedAccountPayable[]>([])
     const [loading, setLoading] = useState(true)
-    const { getClientName, loading: clientsLoading } = useClientContext()
+    const { getClientName, getClient, loading: clientsLoading } = useClientContext()
 
     // Sorting state
-    const [sortField, setSortField] = useState<SortField | null>('display_date')
+    const [sortField, setSortField] = useState<SortField | null>('data_vencimento')
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
     // Filter state
     const [filters, setFilters] = useState<Record<string, string>>({
         display_date: '',
-        client_name: '',
         numero_documento: '',
-        tipo_movimento: '',
-        direcao: '',
         category_description: '',
-        project_name: '',
-        valor_documento: '',
-        status_titulo: ''
+        project_name_display: '',
+        status_titulo: '',
+        document_type: '',
+        valor_documento: ''
     })
 
-    const fetchMovements = useCallback(async () => {
+    const fetchPayables = useCallback(async () => {
         setLoading(true)
         try {
             let startDate: string
@@ -86,13 +75,11 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd')
             }
 
-            console.log(`Fetching ${title} from`, startDate, 'to', endDate)
-
-            // 0. Fetch Categories (Manual Join)
+            // Fetch categories for manual join
             const { data: categoriesRaw } = await supabase.from('categories').select('code, description')
             const categoryMap = new Map(categoriesRaw?.map((c: any) => [c.code, c.description]) || [])
 
-            // Map Projects from props
+            // Project map from props
             const projectMap = new Map(projects.map(p => [p.id, p.name]))
 
             const resolvedProjectCode = (() => {
@@ -101,120 +88,82 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 return project?.id || selectedProject
             })()
 
-            // Query all financial movements
             let query = supabase
-                .from('financial_movements')
-                .select(`
-                    codigo_titulo,
-                    numero_titulo,
-                    numero_documento_fiscal,
-                    cpf_cnpj_cliente,
-                    codigo_cliente,
-                    project_code,
-                    category_code,
-                    current_installment,
-                    total_installments,
-                    data_emissao,
-                    data_vencimento,
-                    data_pagamento,
-                    status,
-                    liquidado,
-                    valor_liquido,
-                    valor_titulo,
-                    valor_pago,
-                    document_type,
-                    natureza,
-                    grupo,
-                    tipo_movimento,
-                    direcao,
-                    is_efetivado,
-                    origem_descricao
-                `)
+                .from('accounts_payable')
+                .select('*')
 
-            // Add project filter if selected
             if (resolvedProjectCode) {
                 query = query.eq('project_code', resolvedProjectCode)
             }
 
-            // Filter by document types if not fetching all
-            if (!fetchAllTypes && documentTypes && documentTypes.length > 0) {
-                query = query.in('document_type', documentTypes)
-                // For non-general tabs, we usually want Saidas (Expenditures)
-                // unless it's the Receipts tab (which uses a different component)
-                if (title !== 'Movimentos Financeiros') {
-                    query = query.eq('natureza', 'S')
-                }
-            }
-
-            // Unify logic for Movimentos Financeiros to match Dashboard Payments
-            if (title === 'Movimentos Financeiros') {
-                query = query
-                    .eq('direcao', 'SAIDA')
-                    .eq('is_efetivado', true)
-                    .not('data_pagamento', 'is', null)
-            }
-
+            // Filter by date range
             query = query
-                .gte('data_pagamento', startDate)
-                .lte('data_pagamento', endDate)
-                .order('data_pagamento', { ascending: false })
+                .gte('data_vencimento', startDate)
+                .lte('data_vencimento', endDate)
+                .order('data_vencimento', { ascending: false })
 
-            const rawData = await fetchAll<FinancialMovement>(query)
+            const rawData = await fetchAll<AccountPayable>(query)
 
-            const mappedData: MappedMovement[] = rawData?.map(item => {
-                const isPaid = item.liquidado || item.status === 'PAGO' || item.status === 'LIQUIDADO'
-                const displayDate = item.data_pagamento || item.data_vencimento || item.data_emissao || ''
-
-                // Build installment label
+            const mappedData: MappedAccountPayable[] = rawData?.map(item => {
+                const displayDate = item.data_vencimento || item.data_emissao || ''
                 const installmentLabel = `${item.current_installment || 1}/${item.total_installments || 1}`
+                const client = getClient(item.codigo_cliente_fornecedor, null)
 
                 return {
-                    id: item.codigo_titulo,
-                    numero_documento: item.numero_titulo || item.numero_documento_fiscal,
-                    display_date: displayDate,
-                    cpf_cnpj_cliente: item.cpf_cnpj_cliente,
-                    codigo_cliente: item.codigo_cliente,
-                    client_name: getClientName(item.codigo_cliente, item.cpf_cnpj_cliente),
-                    is_paid: isPaid,
-                    status_titulo: item.status,
-                    valor_documento: Number(item.valor_pago || item.valor_liquido || item.valor_titulo) || 0,
-                    project_name: projectMap.get(item.project_code || '') || 'N/A',
+                    ...item,
+                    id: item.codigo_lancamento_omie,
                     category_description: categoryMap.get(item.category_code || '') || 'N/A',
+                    project_name_display: projectMap.get(item.project_code || '') || 'N/A',
+                    display_date: displayDate,
                     installment_label: installmentLabel,
-                    current_installment: item.current_installment || 1,
-                    tipo_movimento: item.tipo_movimento || 'N/A',
-                    direcao: item.direcao || 'N/A',
-                    is_efetivado: item.is_efetivado || false,
-                    origem_descricao: item.origem_descricao || 'N/A'
+                    client_name: client?.nome_fantasia || client?.razao_social || 'N/A',
+                    client_cpf_cnpj: client?.cnpj_cpf || ''
                 }
             }) || []
 
-            setMovements(mappedData)
+            setPayables(mappedData)
         } catch (err) {
-            console.error(`Error fetching ${title}:`, err)
+            console.error('Error fetching accounts_payable:', err)
         } finally {
             setLoading(false)
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [timeRange, customDates, selectedProject, title, fetchAllTypes, JSON.stringify(documentTypes), projects, getClientName])
+    }, [timeRange, customDates, selectedProject, projects, getClient])
 
     useEffect(() => {
-        fetchMovements()
-    }, [fetchMovements])
+        fetchPayables()
+    }, [fetchPayables])
 
     // Filter and Sort Logic
-    const filteredMovements = useMemo(() => {
-        let result = [...movements]
+    const filteredAndSortedPayables = useMemo(() => {
+        let result = [...payables]
 
         // Apply filters
         Object.keys(filters).forEach(key => {
             const searchValue = filters[key]?.trim()
             if (searchValue) {
                 result = result.filter(item => {
+                    if (key === 'display_date') {
+                        const dateStr = item.display_date ? format(parseISO(item.display_date), 'dd/MM/yyyy') : ''
+                        return dateStr.includes(searchValue)
+                    }
+
+                    // Special handling for client_name: search by name OR CPF/CNPJ
+                    if (key === 'client_name') {
+                        const nameLower = (item.client_name || '').toLowerCase()
+                        const searchLower = searchValue.toLowerCase()
+                        // Match by name
+                        if (nameLower.includes(searchLower)) return true
+                        // Match by CPF/CNPJ (normalized or formatted)
+                        const normalizedSearch = normalizeCpfCnpj(searchValue)
+                        const normalizedCpfCnpj = normalizeCpfCnpj(item.client_cpf_cnpj)
+                        if (normalizedSearch && normalizedCpfCnpj.includes(normalizedSearch)) return true
+                        return false
+                    }
+
                     const itemValue = String((item as any)[key] || '').trim()
 
-                    // Use exact match for dropdown filters, partial match for text inputs (CNPJ/CPF, Nº Documento, Valor, etc)
-                    if (['tipo_movimento', 'direcao', 'category_description', 'project_name', 'status_titulo'].includes(key)) {
+                    // Dropdown filters
+                    if (['category_description', 'project_name_display', 'status_titulo', 'document_type'].includes(key)) {
                         return itemValue === searchValue
                     } else {
                         return itemValue.toLowerCase().includes(searchValue.toLowerCase())
@@ -226,23 +175,25 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
         // Apply sorting
         if (sortField && sortDirection) {
             result.sort((a, b) => {
-                const aValue = (a as any)[sortField]
-                const bValue = (b as any)[sortField]
+                let aValue = (a as any)[sortField]
+                let bValue = (b as any)[sortField]
 
-                if (aValue === bValue) {
-                    // Secondary sort by installment number if dates are equal
-                    if (sortField === 'display_date') {
-                        return (a.current_installment - b.current_installment) * (sortDirection === 'asc' ? 1 : -1)
-                    }
-                    return 0
+                if (aValue === bValue) return 0
+                if (aValue === null || aValue === undefined) return 1
+                if (bValue === null || bValue === undefined) return -1
+
+                if (typeof aValue === 'string') {
+                    aValue = aValue.toLowerCase()
+                    bValue = bValue.toLowerCase()
                 }
-                const comparison = (aValue as string | number) > (bValue as string | number) ? 1 : -1
+
+                const comparison = aValue > bValue ? 1 : -1
                 return sortDirection === 'asc' ? comparison : -comparison
             })
         }
 
         return result
-    }, [movements, filters, sortField, sortDirection])
+    }, [payables, filters, sortField, sortDirection])
 
     const handleSort = (field: SortField) => {
         if (sortField === field) {
@@ -258,51 +209,39 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
         setFilters(prev => ({ ...prev, [field]: value }))
     }
 
-    // Generate unique options for dropdown filters
-    const uniqueOptions = useMemo(() => {
-        return {
-            tipo_movimento: Array.from(new Set(movements.map(m => m.tipo_movimento).filter(Boolean))).sort(),
-            direcao: Array.from(new Set(movements.map(m => m.direcao).filter(Boolean))).sort(),
-            category_description: Array.from(new Set(movements.map(m => m.category_description).filter(v => v !== 'N/A'))).sort(),
-            project_name: Array.from(new Set(movements.map(m => m.project_name).filter(v => v !== 'N/A'))).sort(),
-            status_titulo: Array.from(new Set(movements.map(m => m.status_titulo).filter(Boolean))).sort()
-        }
-    }, [movements])
+    // Unique options for dropdowns
+    const uniqueOptions = useMemo(() => ({
+        category_description: Array.from(new Set(payables.map(p => p.category_description).filter(v => v !== 'N/A'))).sort(),
+        project_name_display: Array.from(new Set(payables.map(p => p.project_name_display).filter(v => v !== 'N/A'))).sort(),
+        status_titulo: Array.from(new Set(payables.map(p => p.status_titulo).filter(Boolean))).sort(),
+        document_type: Array.from(new Set(payables.map(p => p.document_type).filter(Boolean))).sort(),
+    }), [payables])
 
     const totals = useMemo(() => {
-        const total = filteredMovements.reduce((acc, curr) => acc + curr.valor_documento, 0)
-
-        // Calculate monthly average
-        const monthlyTotals = new Map<string, number>()
-        filteredMovements.forEach(m => {
-            const date = m.display_date || ''
-            if (date) {
-                const monthKey = date.substring(0, 7)
-                monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) || 0) + m.valor_documento)
-            }
-        })
-
-        const totalMonths = monthlyTotals.size
-        const mediaMensal = totalMonths > 0 ? total / totalMonths : 0
-
         return {
-            total,
-            mediaMensal
+            total: filteredAndSortedPayables.reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0),
+            liquidado: filteredAndSortedPayables
+                .filter(p => p.status_titulo === 'LIQUIDADO' || p.status_titulo === 'PAGO')
+                .reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0),
+            aberto: filteredAndSortedPayables
+                .filter(p => p.status_titulo === 'ABERTO')
+                .reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0),
+            atrasado: filteredAndSortedPayables
+                .filter(p => p.status_titulo === 'ATRASADO')
+                .reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0),
         }
-    }, [filteredMovements])
-
-    const CHART_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316']
+    }, [filteredAndSortedPayables])
 
     const categoryChartData = useMemo(() => {
         // Filter by all fields EXCEPT category_description to keep context in chart
-        let chartBase = [...movements]
+        let chartBase = [...payables]
         Object.keys(filters).forEach(key => {
             if (key === 'category_description') return // Skip category filter
             const searchValue = filters[key]?.trim()
             if (searchValue) {
                 chartBase = chartBase.filter(item => {
                     const itemValue = String((item as any)[key] || '').trim()
-                    if (['tipo_movimento', 'direcao', 'project_name', 'status_titulo'].includes(key)) {
+                    if (['status_titulo', 'document_type', 'project_name_display'].includes(key)) {
                         return itemValue === searchValue
                     } else {
                         return itemValue.toLowerCase().includes(searchValue.toLowerCase())
@@ -319,7 +258,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
         return Array.from(categoryTotals, ([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value)
             .slice(0, 10)
-    }, [movements, filters])
+    }, [payables, filters])
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -336,6 +275,8 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
         return `R$ ${value}`
     }
 
+    const CHART_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316']
+
     return (
         <div className="space-y-6 px-4 md:px-8">
             <GlobalFilterBar
@@ -346,30 +287,46 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 selectedProject={selectedProject}
                 setSelectedProject={setSelectedProject}
                 projects={projects}
-                title={title}
-                subtitle="Visualização detalhada por tipo de pagamento"
+                title="Contas a Pagar"
+                subtitle="Gestão de obrigações e pagamentos (Tabela Accounts Payable)"
                 loading={loading || clientsLoading}
             />
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total de Pagamentos</p>
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total Geral</p>
                         <p className="text-3xl font-bold mt-1 text-white">
                             {formatCurrency(totals.total)}
                         </p>
-                        <p className="text-md text-muted-foreground mt-1">Saídas efetivadas no período</p>
                     </div>
                 </div>
 
                 <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Média Mensal</p>
-                        <p className="text-3xl font-bold mt-1 text-orange-400">
-                            {formatCurrency(totals.mediaMensal)}
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Pago (Liquidado)</p>
+                        <p className="text-3xl font-bold mt-1 text-green-400">
+                            {formatCurrency(totals.liquidado)}
                         </p>
-                        <p className="text-md text-muted-foreground mt-1">Média de pagamentos por mês</p>
+                    </div>
+                </div>
+
+                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
+                    <div className="relative z-10">
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Pendente (Aberto)</p>
+                        <p className="text-3xl font-bold mt-1 text-yellow-400">
+                            {formatCurrency(totals.aberto)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
+                    <div className="relative z-10">
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Atrasado</p>
+                        <p className="text-3xl font-bold mt-1 text-red-400">
+                            {formatCurrency(totals.atrasado)}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -379,7 +336,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 <div className="glass rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-4">
                         <BarChart3 className="w-5 h-5 text-primary-app" />
-                        <h3 className="text-lg font-semibold">Custos por Categoria</h3>
+                        <h3 className="text-lg font-semibold">Despesas por Categoria</h3>
                     </div>
                     <div className="h-[280px]">
                         <ResponsiveContainer width="100%" height="100%">
@@ -407,7 +364,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                 <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-2xl">
                                                     <p className="text-white font-semibold text-sm mb-1">{payload[0].payload.name}</p>
                                                     <p className="text-primary-app font-bold text-lg">
-                                                        {formatCurrency(payload[0].value as number)}
+                                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(payload[0].value as number)}
                                                     </p>
                                                 </div>
                                             )
@@ -451,13 +408,12 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                         <thead>
                             <tr className="bg-muted-app/30 border-b border-border-app">
                                 {[
-                                    { id: 'display_date', label: 'Data', width: 'w-32' },
-                                    { id: 'client_name', label: 'Cliente', width: 'w-56' },
+                                    { id: 'display_date', label: 'Vencimento', width: 'w-32' },
+                                    { id: 'client_name', label: 'Fornecedor', width: 'w-48' },
                                     { id: 'numero_documento', label: 'Nº Documento', width: 'w-40' },
-                                    { id: 'tipo_movimento', label: 'Tipo', width: 'w-44' },
-                                    { id: 'direcao', label: 'Direção', width: 'w-32' },
+                                    { id: 'document_type', label: 'Tipo', width: 'w-32' },
                                     { id: 'category_description', label: 'Categoria' },
-                                    { id: 'project_name', label: 'Projeto' },
+                                    { id: 'project_name_display', label: 'Projeto' },
                                     { id: 'valor_documento', label: 'Valor', width: 'w-36' },
                                     { id: 'status_titulo', label: 'Status', width: 'w-32' }
                                 ].map(col => (
@@ -475,7 +431,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                 )}
                                             </button>
                                             <div className="relative group">
-                                                {['tipo_movimento', 'direcao', 'category_description', 'project_name', 'status_titulo'].includes(col.id) ? (
+                                                {['category_description', 'project_name_display', 'status_titulo', 'document_type'].includes(col.id) ? (
                                                     <select
                                                         value={filters[col.id]}
                                                         onChange={(e) => updateFilter(col.id, e.target.value)}
@@ -494,7 +450,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                             value={filters[col.id]}
                                                             onChange={(e) => updateFilter(col.id, e.target.value)}
                                                             className="w-full h-8 pl-7 pr-2 bg-background-app/50 border border-border-app/50 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-app/50 transition-all"
-                                                            placeholder="Filtrar..."
+                                                            placeholder={col.id === 'client_name' ? 'Nome ou CNPJ/CPF...' : 'Filtrar...'}
                                                         />
                                                     </>
                                                 )}
@@ -504,64 +460,33 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                 ))}
                             </tr>
                         </thead>
-                        <tbody
-                            key={JSON.stringify(filters)}
-                            className="divide-y divide-border-app/50"
-                        >
-                            {filteredMovements.length > 0 ? (
-                                filteredMovements.map((item) => (
+                        <tbody className="divide-y divide-border-app/50">
+                            {filteredAndSortedPayables.length > 0 ? (
+                                filteredAndSortedPayables.map((item) => (
                                     <tr key={item.id} className="hover:bg-white/5 transition-colors group">
                                         <td className="px-4 py-3 text-sm">
                                             <div className="flex items-center gap-2">
                                                 <span>{item.display_date ? format(parseISO(item.display_date), 'dd/MM/yyyy') : '-'}</span>
-                                                {item.is_paid && (
-                                                    <span className="text-xs text-green-500" title="Pago">
-                                                        💰
-                                                    </span>
-                                                )}
                                             </div>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
-                                            <div className="flex flex-col">
-                                                <span className="font-medium text-white truncate max-w-[200px]" title={item.client_name}>
-                                                    {item.client_name}
-                                                </span>
-                                                {item.cpf_cnpj_cliente && (
-                                                    <span className="text-[10px] text-muted-foreground font-mono">
-                                                        {formatCpfCnpj(item.cpf_cnpj_cliente)}
-                                                    </span>
-                                                )}
-                                            </div>
+                                            <span className="truncate max-w-[180px] block font-medium text-white" title={item.client_name}>
+                                                {item.client_name}
+                                            </span>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
                                             <div className="flex flex-col">
-                                                <span className="font-mono">{item.numero_documento || 'S/N'}</span>
+                                                <span className="font-mono">{item.numero_documento || item.numero_documento_fiscal || 'S/N'}</span>
                                                 {item.installment_label && (
                                                     <span className="text-[10px] text-primary-app font-bold uppercase tracking-wider">
-                                                        {item.installment_label}
+                                                        Parc. {item.installment_label}
                                                     </span>
                                                 )}
                                             </div>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${item.is_efetivado
-                                                    ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                                                    : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
-                                                    }`}>
-                                                    {item.tipo_movimento}
-                                                </span>
-                                                {item.is_efetivado && (
-                                                    <span className="text-green-400" title="Movimento Efetivado">✓</span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-sm">
-                                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase border ${item.direcao === 'ENTRADA'
-                                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                                                : 'bg-orange-500/10 text-orange-400 border-orange-500/20'
-                                                }`}>
-                                                {item.direcao === 'ENTRADA' ? '↓ ENTRADA' : '↑ SAIDA'}
+                                            <span className="px-2 py-0.5 rounded-full bg-white/5 text-muted-foreground text-[10px] font-medium border border-border-app/50">
+                                                {item.document_type || '-'}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
@@ -570,13 +495,13 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
-                                            <span className="text-muted-foreground">{item.project_name}</span>
+                                            <span className="text-muted-foreground">{item.project_name_display}</span>
                                         </td>
                                         <td className="px-4 py-3 text-sm font-semibold text-white">
-                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor_documento)}
+                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor_documento || 0)}
                                         </td>
                                         <td className="px-4 py-3 text-sm">
-                                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase border ${item.status_titulo === 'LIQUIDADO'
+                                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase border ${item.status_titulo === 'LIQUIDADO' || item.status_titulo === 'PAGO'
                                                 ? 'bg-green-500/10 text-green-500 border-green-500/20'
                                                 : item.status_titulo === 'ABERTO'
                                                     ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
@@ -591,7 +516,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
+                                    <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
                                         {loading ? 'Carregando...' : 'Nenhum registro encontrado para este período.'}
                                     </td>
                                 </tr>
