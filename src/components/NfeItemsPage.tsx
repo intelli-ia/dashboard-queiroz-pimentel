@@ -16,6 +16,7 @@ import {
     ArrowDown
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
 import { useClientContext } from '@/context/ClientContext'
 import type { PageProps, NfeItem, NfeHeader } from '@/types'
@@ -112,9 +113,7 @@ export default function NfeItemsPage({
                 query = query.eq('nfe_headers.project_code', selectedProject);
             }
 
-            const { data, error } = await query
-
-            if (error) throw error
+            const data = await fetchAll<any>(query)
 
             if (data) {
                 const mappedData = data.map((item: any) => ({
