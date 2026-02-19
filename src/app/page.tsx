@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Login from '@/components/Login'
-import { ChevronLeft, ChevronRight, LogOut, TrendingUp, Banknote, LayoutDashboard, ShoppingBag } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LogOut, TrendingUp, Banknote, LayoutDashboard, ShoppingBag, Wallet } from 'lucide-react'
 import GenericFinancialPage from '@/components/GenericFinancialPage'
 import ReceiptsPage from '@/components/ReceiptsPage'
 import AccountsPayablePage from '@/components/AccountsPayablePage'
@@ -159,7 +159,7 @@ export default function Home() {
                 }`}
               title="Contas a Receber"
             >
-              <TrendingUp className="w-5 h-5 shrink-0" />
+              <Wallet className="w-5 h-5 shrink-0" />
               {!isSidebarCollapsed && <span className="font-medium hidden md:block">Contas a Receber</span>}
             </button>
 

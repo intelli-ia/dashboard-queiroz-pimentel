@@ -46,6 +46,7 @@ const formatDate = (dateString: string | null) => {
 interface MappedNfeItem extends NfeItem {
     supplier_name: string
     date_emissao: string | null
+    display_name: string
     header_info?: NfeHeader
 }
 
@@ -118,6 +119,7 @@ export default function NfeItemsPage({
             if (data) {
                 const mappedData = data.map((item: any) => ({
                     ...item,
+                    display_name: item.nome_item_normalizado || item.descricao_produto || '',
                     supplier_name: item.nfe_headers.nome_fantasia || item.nfe_headers.razao_social || 'N/A',
                     date_emissao: item.nfe_headers.data_emissao,
                     header_info: item.nfe_headers
@@ -151,6 +153,7 @@ export default function NfeItemsPage({
         if (searchTerm) {
             const lowerSearch = searchTerm.toLowerCase()
             result = result.filter(item =>
+                item.display_name.toLowerCase().includes(lowerSearch) ||
                 item.descricao_produto?.toLowerCase().includes(lowerSearch) ||
                 item.supplier_name.toLowerCase().includes(lowerSearch) ||
                 item.codigo_produto?.toLowerCase().includes(lowerSearch)
@@ -189,7 +192,7 @@ export default function NfeItemsPage({
         if (filteredAndSortedItems.length === 0) return null
         const counts = new Map<string, { desc: string, qty: number }>()
         filteredAndSortedItems.forEach(item => {
-            const key = item.descricao_produto || 'S/N'
+            const key = item.display_name || 'S/N'
             const existing = counts.get(key) || { desc: key, qty: 0 }
             counts.set(key, { desc: key, qty: existing.qty + (item.quantidade || 0) })
         })
@@ -200,7 +203,7 @@ export default function NfeItemsPage({
         if (filteredAndSortedItems.length === 0) return null
         const spends = new Map<string, { desc: string, total: number }>()
         filteredAndSortedItems.forEach(item => {
-            const key = item.descricao_produto || 'S/N'
+            const key = item.display_name || 'S/N'
             const existing = spends.get(key) || { desc: key, total: 0 }
             spends.set(key, { desc: key, total: existing.total + (item.valor_total || 0) })
         })
@@ -223,15 +226,7 @@ export default function NfeItemsPage({
             />
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="glass p-6 rounded-2xl space-y-2 relative overflow-hidden group">
-                    <div className="flex items-center gap-2 text-muted-foreground text-sm font-medium uppercase tracking-wider text-blue-400">
-                        <DollarSign className="w-4 h-4" /> Total Gasto
-                    </div>
-                    <div className="text-3xl font-bold text-white">{formatCurrency(totalSpent)}</div>
-                    <p className="text-sm text-muted-foreground">Soma total dos itens filtrados</p>
-                </div>
-
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="glass p-6 rounded-2xl space-y-2 relative overflow-hidden group">
                     <div className="flex items-center gap-2 text-muted-foreground text-sm font-medium uppercase tracking-wider text-green-400">
                         <ShoppingBag className="w-4 h-4" /> Mais Comprado (Volume)
@@ -291,10 +286,10 @@ export default function NfeItemsPage({
                                         {sortField === 'date_emissao' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
                                     </div>
                                 </th>
-                                <th className="px-6 py-4 font-medium cursor-pointer hover:text-white" onClick={() => handleSort('descricao_produto')}>
+                                <th className="px-6 py-4 font-medium cursor-pointer hover:text-white" onClick={() => handleSort('display_name')}>
                                     <div className="flex items-center gap-1">
                                         Produto
-                                        {sortField === 'descricao_produto' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
+                                        {sortField === 'display_name' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
                                     </div>
                                 </th>
                                 <th className="px-6 py-4 font-medium cursor-pointer hover:text-white" onClick={() => handleSort('supplier_name')}>
@@ -331,7 +326,9 @@ export default function NfeItemsPage({
                                             {formatDate(item.date_emissao)}
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="text-white font-medium">{item.descricao_produto}</div>
+                                            <div className="text-white font-medium">
+                                                {item.display_name}
+                                            </div>
                                             <div className="text-xs text-muted-foreground">{item.codigo_produto || '-'}</div>
                                         </td>
                                         <td className="px-6 py-4 text-muted-foreground">
