@@ -785,7 +785,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
         <div className="glass rounded-xl p-6 flex flex-col mt-6">
           <div className="flex items-center gap-2 mb-6">
             <Calculator className="w-5 h-5 text-primary-app" />
-            <h3 className="text-lg font-semibold text-white">Análise de Impostos (Pagos)</h3>
+            <h3 className="text-lg font-semibold text-white">Análise de Impostos Pagos</h3>
           </div>
           <div className="h-[350px] w-full mt-auto">
             <ResponsiveContainer width="100%" height="100%">
