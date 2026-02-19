@@ -12,7 +12,7 @@ import {
   BarChart, Bar, LabelList
 } from 'recharts'
 import GlobalFilterBar from './GlobalFilterBar'
-import type { PageProps, FinancialMovement, AccountReceivable } from '@/types'
+import type { PageProps, FinancialMovement, AccountReceivable, AccountPayable } from '@/types'
 
 const CHART_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316']
 
@@ -39,12 +39,19 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
   const [loading, setLoading] = useState(true)
   const [movements, setMovements] = useState<MovementWithCategory[]>([])
   const [receivables, setReceivables] = useState<AccountReceivable[]>([])
+  const [taxPayables, setTaxPayables] = useState<AccountPayable[]>([])
   const [interactiveTimeRange, setInteractiveTimeRange] = useState('all')
 
   const resolvedProjectCode = useMemo(() => {
     if (!selectedProject) return ''
     const project = projects.find(p => p.id === selectedProject || p.name === selectedProject)
     return project?.id || selectedProject
+  }, [selectedProject, projects])
+
+  const selectedProjectLabel = useMemo(() => {
+    if (!selectedProject) return ''
+    const project = projects.find(p => p.id === selectedProject || p.name === selectedProject)
+    return project?.name || selectedProject
   }, [selectedProject, projects])
 
   const fetchDashboardData = useCallback(async () => {
@@ -126,6 +133,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
         .select(`
           codigo_lancamento_omie,
           project_code,
+          project_name,
           data_vencimento,
           valor_documento,
           status_titulo
@@ -142,6 +150,28 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
 
       const receivablesData = await fetchAll<AccountReceivable>(receivablesQuery)
       setReceivables(receivablesData || [])
+
+      // Fetch accounts_payable for Tax Analysis
+      let taxQuery = supabase
+        .from('accounts_payable')
+        .select(`
+          valor_inss,
+          valor_ir,
+          valor_iss,
+          valor_pis,
+          valor_cofins,
+          valor_csll,
+          status_titulo,
+          data_vencimento,
+          project_code,
+          project_name
+        `)
+        .in('status_titulo', ['PAGO', 'LIQUIDADO'])
+        .gte('data_vencimento', startDate)
+        .lte('data_vencimento', endDate)
+
+      const taxData = await fetchAll<AccountPayable>(taxQuery)
+      setTaxPayables(taxData || [])
     } catch (err) {
       console.error('Error fetching dashboard data:', err)
     } finally {
@@ -166,7 +196,8 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
     return receivables
       .filter(r => {
         if (!selectedProject) return true
-        return r.project_code === resolvedProjectCode || (r as any).project_name === selectedProject
+        // Filter by project_code (ID) OR project_name (Label)
+        return r.project_code === resolvedProjectCode || r.project_name === selectedProjectLabel
       })
       .reduce((sum, r) => sum + (r.valor_documento || 0), 0)
   }, [receivables, selectedProject, resolvedProjectCode])
@@ -284,6 +315,39 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
       .sort((a, b) => b.value - a.value)
       .slice(0, 10)
   }, [movements, projects])
+
+  // Tax Analysis Chart Data
+  const taxChartData = useMemo(() => {
+    const totals = {
+      INSS: 0,
+      IR: 0,
+      ISS: 0,
+      PIS: 0,
+      COFINS: 0,
+      CSLL: 0
+    }
+
+    taxPayables
+      .filter(p => !selectedProject || p.project_code === resolvedProjectCode || p.project_name === selectedProjectLabel)
+      .forEach(p => {
+        totals.INSS += Number(p.valor_inss) || 0
+        totals.IR += Number(p.valor_ir) || 0
+        totals.ISS += Number(p.valor_iss) || 0
+        totals.PIS += Number(p.valor_pis) || 0
+        totals.COFINS += Number(p.valor_cofins) || 0
+        totals.CSLL += Number(p.valor_csll) || 0
+      })
+
+    return [
+      { name: 'INSS', value: totals.INSS },
+      { name: 'IR', value: totals.IR },
+      { name: 'ISS', value: totals.ISS },
+      { name: 'PIS', value: totals.PIS },
+      { name: 'COFINS', value: totals.COFINS },
+      { name: 'CSLL', value: totals.CSLL },
+    ].filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+  }, [taxPayables, selectedProject, resolvedProjectCode])
 
 
   const docTypeLabels: Record<string, string> = {
@@ -418,7 +482,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
                           return (
                             <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-2xl backdrop-blur-md bg-opacity-90">
                               <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider mb-1">
-                                {format(parseISO(payload[0].payload.date), "dd 'de' MMMM", { locale: ptBR })}
+                                {format(parseISO(payload[0].payload.date), "dd 'de' MMMM/yyyy", { locale: ptBR })}
                               </p>
                               <p className="text-white font-bold text-lg">
                                 {formatCurrency(payload[0].value as number)}
@@ -707,6 +771,71 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
           </div>
         </div>
 
+      )}
+
+      {/* Tax Analysis Chart */}
+      {!loading && taxChartData.length > 0 && (
+        <div className="glass rounded-xl p-6 flex flex-col mt-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Calculator className="w-5 h-5 text-primary-app" />
+            <h3 className="text-lg font-semibold text-white">Análise de Impostos (Pagos)</h3>
+          </div>
+          <div className="h-[350px] w-full mt-auto">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={taxChartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fill: '#94a3b8', fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fill: '#94a3b8', fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(value) => `R$ ${formatCompact(value)}`}
+                />
+                <Tooltip
+                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-2xl backdrop-blur-md bg-opacity-90">
+                          <p className="text-white font-semibold text-sm mb-1">
+                            {payload[0].payload.name}
+                          </p>
+                          <p className="text-primary-app font-bold text-lg">
+                            {formatCurrency(payload[0].value as number)}
+                          </p>
+                        </div>
+                      )
+                    }
+                    return null
+                  }}
+                />
+                <Bar
+                  dataKey="value"
+                  radius={[4, 4, 0, 0]}
+                  barSize={60}
+                >
+                  {taxChartData.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                  <LabelList
+                    dataKey="value"
+                    position="top"
+                    style={{ fill: '#fff', fontSize: 11, fontWeight: 'bold' }}
+                    formatter={(val: number) => formatCompact(val)}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       )}
     </div>
   )
