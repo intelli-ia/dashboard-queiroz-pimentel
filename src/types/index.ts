@@ -174,6 +174,7 @@ export interface NfeItem {
   codigo_produto: string | null
   id_produto: number | null
   descricao_produto: string | null
+  nome_item_normalizado: string | null
   ncm: string | null
   cfop: string | null
   category_code: string | null
