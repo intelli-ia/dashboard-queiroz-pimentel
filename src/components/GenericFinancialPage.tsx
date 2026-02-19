@@ -7,6 +7,8 @@ import { format, subDays, parseISO } from 'date-fns'
 import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, BarChart3 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import GlobalFilterBar from './GlobalFilterBar'
+import { useClientContext } from '@/context/ClientContext'
+import { formatCpfCnpj } from '@/lib/cpf-cnpj-utils'
 import type { PageProps as BasePageProps, FinancialMovement } from '@/types'
 
 interface PageProps extends BasePageProps {
@@ -16,7 +18,7 @@ interface PageProps extends BasePageProps {
     includeKeywords?: string[]
 }
 
-type SortField = 'display_date' | 'cpf_cnpj_cliente' | 'numero_documento' | 'tipo_movimento' | 'direcao' | 'category_description' | 'project_name' | 'valor_documento' | 'status_titulo'
+type SortField = 'display_date' | 'client_name' | 'numero_documento' | 'tipo_movimento' | 'direcao' | 'category_description' | 'project_name' | 'valor_documento' | 'status_titulo'
 type SortDirection = 'asc' | 'desc' | null
 
 interface MappedMovement {
@@ -24,6 +26,8 @@ interface MappedMovement {
     numero_documento: string | null
     display_date: string
     cpf_cnpj_cliente: string | null
+    codigo_cliente: number | null
+    client_name: string
     is_paid: boolean
     status_titulo: string | null
     valor_documento: number
@@ -40,6 +44,7 @@ interface MappedMovement {
 export default function GenericFinancialPage({ title, documentTypes, fetchAllTypes = false, timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
     const [movements, setMovements] = useState<MappedMovement[]>([])
     const [loading, setLoading] = useState(true)
+    const { getClientName, loading: clientsLoading } = useClientContext()
 
     // Sorting state
     const [sortField, setSortField] = useState<SortField | null>('display_date')
@@ -48,7 +53,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
     // Filter state
     const [filters, setFilters] = useState<Record<string, string>>({
         display_date: '',
-        cpf_cnpj_cliente: '',
+        client_name: '',
         numero_documento: '',
         tipo_movimento: '',
         direcao: '',
@@ -90,6 +95,12 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
             // Map Projects from props
             const projectMap = new Map(projects.map(p => [p.id, p.name]))
 
+            const resolvedProjectCode = (() => {
+                if (!selectedProject) return ''
+                const project = projects.find(p => p.id === selectedProject || p.name === selectedProject)
+                return project?.id || selectedProject
+            })()
+
             // Query all financial movements
             let query = supabase
                 .from('financial_movements')
@@ -98,6 +109,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                     numero_titulo,
                     numero_documento_fiscal,
                     cpf_cnpj_cliente,
+                    codigo_cliente,
                     project_code,
                     category_code,
                     current_installment,
@@ -120,8 +132,8 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 `)
 
             // Add project filter if selected
-            if (selectedProject) {
-                query = query.eq('project_code', selectedProject)
+            if (resolvedProjectCode) {
+                query = query.eq('project_code', resolvedProjectCode)
             }
 
             // Filter by document types if not fetching all
@@ -161,6 +173,8 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                     numero_documento: item.numero_titulo || item.numero_documento_fiscal,
                     display_date: displayDate,
                     cpf_cnpj_cliente: item.cpf_cnpj_cliente,
+                    codigo_cliente: item.codigo_cliente,
+                    client_name: getClientName(item.codigo_cliente, item.cpf_cnpj_cliente),
                     is_paid: isPaid,
                     status_titulo: item.status,
                     valor_documento: Number(item.valor_pago || item.valor_liquido || item.valor_titulo) || 0,
@@ -182,7 +196,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
             setLoading(false)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [timeRange, customDates, selectedProject, title, fetchAllTypes, JSON.stringify(documentTypes), projects])
+    }, [timeRange, customDates, selectedProject, title, fetchAllTypes, JSON.stringify(documentTypes), projects, getClientName])
 
     useEffect(() => {
         fetchMovements()
@@ -334,7 +348,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 projects={projects}
                 title={title}
                 subtitle="Visualização detalhada por tipo de pagamento"
-                loading={loading}
+                loading={loading || clientsLoading}
             />
 
             {/* KPI Cards */}
@@ -438,7 +452,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                             <tr className="bg-muted-app/30 border-b border-border-app">
                                 {[
                                     { id: 'display_date', label: 'Data', width: 'w-32' },
-                                    { id: 'cpf_cnpj_cliente', label: 'CNPJ/CPF', width: 'w-40' },
+                                    { id: 'client_name', label: 'Cliente', width: 'w-56' },
                                     { id: 'numero_documento', label: 'Nº Documento', width: 'w-40' },
                                     { id: 'tipo_movimento', label: 'Tipo', width: 'w-44' },
                                     { id: 'direcao', label: 'Direção', width: 'w-32' },
@@ -508,7 +522,16 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                             </div>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
-                                            <span className="font-mono text-xs">{item.cpf_cnpj_cliente || '-'}</span>
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-white truncate max-w-[200px]" title={item.client_name}>
+                                                    {item.client_name}
+                                                </span>
+                                                {item.cpf_cnpj_cliente && (
+                                                    <span className="text-[10px] text-muted-foreground font-mono">
+                                                        {formatCpfCnpj(item.cpf_cnpj_cliente)}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
                                             <div className="flex flex-col">

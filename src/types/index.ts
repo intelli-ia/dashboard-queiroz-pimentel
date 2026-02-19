@@ -136,6 +136,23 @@ export interface FinancialMovement {
   categories?: { code: string; description: string }
 }
 
+// Client - Clientes/Fornecedores
+export interface Client {
+  codigo_cliente_omie: number  // PK - matches codigo_cliente in financial_movements
+  cnpj_cpf: string | null
+  razao_social: string | null
+  nome_fantasia: string | null
+  tags: string | null
+  pessoa_fisica: boolean
+  inativo: boolean
+}
+
+// Client lookup maps type for reuse
+export interface ClientMaps {
+  byCodigoOmie: Map<number, Client>
+  byNormalizedCpfCnpj: Map<string, Client>
+}
+
 // ============================================
 // UI/DISPLAY TYPES
 // ============================================

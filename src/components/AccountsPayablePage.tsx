@@ -7,6 +7,8 @@ import { format, subDays, parseISO } from 'date-fns'
 import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, BarChart3, Banknote } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import GlobalFilterBar from './GlobalFilterBar'
+import { useClientContext } from '@/context/ClientContext'
+import { normalizeCpfCnpj } from '@/lib/cpf-cnpj-utils'
 import type { PageProps, AccountPayable } from '@/types'
 
 type SortField = keyof AccountPayable | 'category_description' | 'project_name_display'
@@ -18,6 +20,8 @@ interface MappedAccountPayable extends AccountPayable {
     project_name_display: string
     display_date: string
     installment_label: string
+    client_name: string
+    client_cpf_cnpj: string
 }
 
 export default function AccountsPayablePage({
@@ -31,6 +35,7 @@ export default function AccountsPayablePage({
 }: PageProps) {
     const [payables, setPayables] = useState<MappedAccountPayable[]>([])
     const [loading, setLoading] = useState(true)
+    const { getClientName, getClient, loading: clientsLoading } = useClientContext()
 
     // Sorting state
     const [sortField, setSortField] = useState<SortField | null>('data_vencimento')
@@ -77,18 +82,21 @@ export default function AccountsPayablePage({
             // Project map from props
             const projectMap = new Map(projects.map(p => [p.id, p.name]))
 
+            const resolvedProjectCode = (() => {
+                if (!selectedProject) return ''
+                const project = projects.find(p => p.id === selectedProject || p.name === selectedProject)
+                return project?.id || selectedProject
+            })()
+
             let query = supabase
                 .from('accounts_payable')
                 .select('*')
 
-            if (selectedProject) {
-                query = query.eq('project_code', selectedProject)
+            if (resolvedProjectCode) {
+                query = query.eq('project_code', resolvedProjectCode)
             }
 
-            // Filter by date range (using data_vencimento for payables if no payment date exists, but usually we use a consistent field)
-            // The original implemented used data_pagamento if it existed.
-            // In accounts_payable, we might want to filter by data_vencimento or data_previsao.
-            // Let's use data_vencimento for now as the primary range filter.
+            // Filter by date range
             query = query
                 .gte('data_vencimento', startDate)
                 .lte('data_vencimento', endDate)
@@ -99,6 +107,7 @@ export default function AccountsPayablePage({
             const mappedData: MappedAccountPayable[] = rawData?.map(item => {
                 const displayDate = item.data_vencimento || item.data_emissao || ''
                 const installmentLabel = `${item.current_installment || 1}/${item.total_installments || 1}`
+                const client = getClient(item.codigo_cliente_fornecedor, null)
 
                 return {
                     ...item,
@@ -106,7 +115,9 @@ export default function AccountsPayablePage({
                     category_description: categoryMap.get(item.category_code || '') || 'N/A',
                     project_name_display: projectMap.get(item.project_code || '') || 'N/A',
                     display_date: displayDate,
-                    installment_label: installmentLabel
+                    installment_label: installmentLabel,
+                    client_name: client?.nome_fantasia || client?.razao_social || 'N/A',
+                    client_cpf_cnpj: client?.cnpj_cpf || ''
                 }
             }) || []
 
@@ -116,7 +127,7 @@ export default function AccountsPayablePage({
         } finally {
             setLoading(false)
         }
-    }, [timeRange, customDates, selectedProject, projects])
+    }, [timeRange, customDates, selectedProject, projects, getClient])
 
     useEffect(() => {
         fetchPayables()
@@ -134,6 +145,19 @@ export default function AccountsPayablePage({
                     if (key === 'display_date') {
                         const dateStr = item.display_date ? format(parseISO(item.display_date), 'dd/MM/yyyy') : ''
                         return dateStr.includes(searchValue)
+                    }
+
+                    // Special handling for client_name: search by name OR CPF/CNPJ
+                    if (key === 'client_name') {
+                        const nameLower = (item.client_name || '').toLowerCase()
+                        const searchLower = searchValue.toLowerCase()
+                        // Match by name
+                        if (nameLower.includes(searchLower)) return true
+                        // Match by CPF/CNPJ (normalized or formatted)
+                        const normalizedSearch = normalizeCpfCnpj(searchValue)
+                        const normalizedCpfCnpj = normalizeCpfCnpj(item.client_cpf_cnpj)
+                        if (normalizedSearch && normalizedCpfCnpj.includes(normalizedSearch)) return true
+                        return false
                     }
 
                     const itemValue = String((item as any)[key] || '').trim()
@@ -197,7 +221,7 @@ export default function AccountsPayablePage({
         return {
             total: filteredAndSortedPayables.reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0),
             liquidado: filteredAndSortedPayables
-                .filter(p => p.status_titulo === 'LIQUIDADO')
+                .filter(p => p.status_titulo === 'LIQUIDADO' || p.status_titulo === 'PAGO')
                 .reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0),
             aberto: filteredAndSortedPayables
                 .filter(p => p.status_titulo === 'ABERTO')
@@ -265,7 +289,7 @@ export default function AccountsPayablePage({
                 projects={projects}
                 title="Contas a Pagar"
                 subtitle="Gestão de obrigações e pagamentos (Tabela Accounts Payable)"
-                loading={loading}
+                loading={loading || clientsLoading}
             />
 
             {/* KPI Cards */}
@@ -385,6 +409,7 @@ export default function AccountsPayablePage({
                             <tr className="bg-muted-app/30 border-b border-border-app">
                                 {[
                                     { id: 'display_date', label: 'Vencimento', width: 'w-32' },
+                                    { id: 'client_name', label: 'Fornecedor', width: 'w-48' },
                                     { id: 'numero_documento', label: 'Nº Documento', width: 'w-40' },
                                     { id: 'document_type', label: 'Tipo', width: 'w-32' },
                                     { id: 'category_description', label: 'Categoria' },
@@ -425,7 +450,7 @@ export default function AccountsPayablePage({
                                                             value={filters[col.id]}
                                                             onChange={(e) => updateFilter(col.id, e.target.value)}
                                                             className="w-full h-8 pl-7 pr-2 bg-background-app/50 border border-border-app/50 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-app/50 transition-all"
-                                                            placeholder="Filtrar..."
+                                                            placeholder={col.id === 'client_name' ? 'Nome ou CNPJ/CPF...' : 'Filtrar...'}
                                                         />
                                                     </>
                                                 )}
@@ -443,6 +468,11 @@ export default function AccountsPayablePage({
                                             <div className="flex items-center gap-2">
                                                 <span>{item.display_date ? format(parseISO(item.display_date), 'dd/MM/yyyy') : '-'}</span>
                                             </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm">
+                                            <span className="truncate max-w-[180px] block font-medium text-white" title={item.client_name}>
+                                                {item.client_name}
+                                            </span>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
                                             <div className="flex flex-col">
@@ -471,7 +501,7 @@ export default function AccountsPayablePage({
                                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor_documento || 0)}
                                         </td>
                                         <td className="px-4 py-3 text-sm">
-                                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase border ${item.status_titulo === 'LIQUIDADO'
+                                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase border ${item.status_titulo === 'LIQUIDADO' || item.status_titulo === 'PAGO'
                                                 ? 'bg-green-500/10 text-green-500 border-green-500/20'
                                                 : item.status_titulo === 'ABERTO'
                                                     ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
@@ -486,7 +516,7 @@ export default function AccountsPayablePage({
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                                    <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
                                         {loading ? 'Carregando...' : 'Nenhum registro encontrado para este período.'}
                                     </td>
                                 </tr>

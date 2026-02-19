@@ -45,7 +45,7 @@ export default function GlobalFilterBar({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const selectedProjectName = projects.find(p => p.id === selectedProject)?.name || 'Geral (Todas Obras)'
+  const selectedProjectName = projects.find(p => p.id === selectedProject)?.name || 'Geral (Todas as Obras)'
 
   return (
     <div className="sticky top-0 z-40 bg-background-app/80 backdrop-blur-xl border-b border-border-app">
@@ -96,7 +96,7 @@ export default function GlobalFilterBar({
                     }}
                     className={`w-full text-left px-4 py-2.5 hover:bg-primary-app/10 text-[13px] transition-colors border-b border-white/5 ${!selectedProject ? 'bg-primary-app/10 text-primary-app' : 'text-muted-foreground'}`}
                   >
-                    Geral (Todas Obras)
+                    Geral (Todas as Obras)
                   </button>
                   {projects.map((project) => (
                     <button

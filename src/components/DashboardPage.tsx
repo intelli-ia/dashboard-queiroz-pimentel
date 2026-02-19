@@ -41,6 +41,12 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
   const [receivables, setReceivables] = useState<AccountReceivable[]>([])
   const [interactiveTimeRange, setInteractiveTimeRange] = useState('all')
 
+  const resolvedProjectCode = useMemo(() => {
+    if (!selectedProject) return ''
+    const project = projects.find(p => p.id === selectedProject || p.name === selectedProject)
+    return project?.id || selectedProject
+  }, [selectedProject, projects])
+
   const fetchDashboardData = useCallback(async () => {
     setLoading(true)
     try {
@@ -139,9 +145,10 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
     } catch (err) {
       console.error('Error fetching dashboard data:', err)
     } finally {
+      setLoading(true) // Wait, why was this false? Oh, it was finally{setLoading(false)}.
       setLoading(false)
     }
-  }, [timeRange, customDates]) // Removido selectedProject das dependências de busca, pois o filtro agora é local
+  }, [timeRange, customDates])
 
   useEffect(() => {
     fetchDashboardData()
@@ -150,21 +157,24 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
   // KPI 1: Total Pagamentos - soma APENAS do campo valor_pago de SAIDAS
   const totalPagamentos = useMemo(() => {
     return movements
-      .filter(m => !selectedProject || m.project_code === selectedProject)
+      .filter(m => !resolvedProjectCode || m.project_code === resolvedProjectCode)
       .reduce((sum, m) => sum + (m.valor_pago || 0), 0)
-  }, [movements, selectedProject])
+  }, [movements, resolvedProjectCode])
 
   // KPI 2: Total Receitas (da tabela accounts_receivable)
   const totalReceitas = useMemo(() => {
     return receivables
-      .filter(r => !selectedProject || r.project_code === selectedProject)
+      .filter(r => {
+        if (!selectedProject) return true
+        return r.project_code === resolvedProjectCode || (r as any).project_name === selectedProject
+      })
       .reduce((sum, r) => sum + (r.valor_documento || 0), 0)
-  }, [receivables, selectedProject])
+  }, [receivables, selectedProject, resolvedProjectCode])
 
   // KPI 3: Total Transacoes
   const totalTransacoes = useMemo(() =>
-    movements.filter(m => !selectedProject || m.project_code === selectedProject).length,
-    [movements, selectedProject])
+    movements.filter(m => !resolvedProjectCode || m.project_code === resolvedProjectCode).length,
+    [movements, resolvedProjectCode])
 
   // KPI 4: Custo Medio Mensal
   const custoMedioMensal = useMemo(() => {
@@ -179,7 +189,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
     const totalMonths = monthlyTotals.size
     const totalValue = Array.from(monthlyTotals.values()).reduce((a, b) => a + b, 0)
     return totalMonths > 0 ? totalValue / totalMonths : 0
-  }, [movements, selectedProject])
+  }, [movements, resolvedProjectCode])
 
   // Line Chart Data: Monthly paid values
   const monthlyChartData = useMemo(() => {
@@ -196,7 +206,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
       monthSort: month,
       value
     })).sort((a, b) => a.monthSort.localeCompare(b.monthSort))
-  }, [movements, selectedProject])
+  }, [movements, resolvedProjectCode])
 
   // Pie Chart 1: Payments by Category
   const categoryChartData = useMemo(() => {
@@ -211,7 +221,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
     return Array.from(categoryMap, ([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8)
-  }, [movements, selectedProject])
+  }, [movements, resolvedProjectCode])
 
   // Interactive Area Chart Data: Daily cost over time
   const interactiveChartData = useMemo(() => {
@@ -238,7 +248,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
     const startDate = subDays(referenceDate, daysToSubtract)
     const resultData = allDays.filter(item => parseISO(item.date) >= startDate)
     return resultData
-  }, [movements, interactiveTimeRange, selectedProject])
+  }, [movements, interactiveTimeRange, resolvedProjectCode])
 
   // Pie Chart 2: Payments by Document Type
   const documentTypeChartData = useMemo(() => {
@@ -252,7 +262,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
       })
     return Array.from(docTypeMap, ([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
-  }, [movements, selectedProject])
+  }, [movements, resolvedProjectCode])
 
   // Bar Chart 1: Payments by Project
   const projectChartData = useMemo(() => {
@@ -517,7 +527,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
                       dataKey="value"
                     >
                       {categoryChartData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} stroke="none" />
                       ))}
                     </Pie>
                     <Legend
@@ -680,7 +690,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
                     <Cell
                       key={`cell-${index}`}
                       fill={CHART_COLORS[index % CHART_COLORS.length]}
-                      fillOpacity={!selectedProject || selectedProject === entry.id ? 1 : 0.3}
+                      fillOpacity={!resolvedProjectCode || resolvedProjectCode === entry.id ? 1 : 0.3}
                     />
                   ))}
                   <LabelList

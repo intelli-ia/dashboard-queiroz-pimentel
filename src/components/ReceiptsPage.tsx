@@ -12,6 +12,8 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { format, subDays, parseISO } from 'date-fns'
+import { useClientContext } from '@/context/ClientContext'
+import { normalizeCpfCnpj } from '@/lib/cpf-cnpj-utils'
 import type { PageProps, AccountReceivable, STATUS_TITULO } from '@/types'
 
 const formatCurrency = (value: number) => {
@@ -33,9 +35,35 @@ interface SortConfig {
     direction: 'asc' | 'desc'
 }
 
+interface MappedAccountReceivable extends AccountReceivable {
+    client_name: string
+    client_cpf_cnpj: string
+}
+
 export default function ReceiptsPage({ timeRange, setTimeRange, customDates, setCustomDates, selectedProject, setSelectedProject, projects }: PageProps) {
-    const [receipts, setReceipts] = useState<AccountReceivable[]>([])
+    const [receipts, setReceipts] = useState<MappedAccountReceivable[]>([])
     const [loading, setLoading] = useState(true)
+    const { getClient, loading: clientsLoading } = useClientContext()
+    const [projectNames, setProjectNames] = useState<string[]>([])
+
+    useEffect(() => {
+        const fetchProjectNames = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('accounts_receivable')
+                    .select('project_name')
+                    .not('project_name', 'is', null)
+                if (error) throw error
+                if (data) {
+                    const uniqueNames = Array.from(new Set(data.map((r: any) => r.project_name))).sort() as string[]
+                    setProjectNames(uniqueNames)
+                }
+            } catch (err) {
+                console.error('Error fetching project names:', err)
+            }
+        }
+        fetchProjectNames()
+    }, [])
 
     // Filters
     const [statusFilter, setStatusFilter] = useState('all')
@@ -72,6 +100,10 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
             const { data: categoriesRaw } = await supabase.from('categories').select('code, description')
             const categoryMap = new Map(categoriesRaw?.map((c: any) => [c.code, c.description]) || [])
 
+            // Create projectMap for mapping project codes to names
+            const projectMap = new Map(projects.map(p => [p.id, p.name]))
+            console.log('projectMap keys:', Array.from(projectMap.keys()))
+
             // Query accounts_receivable (no joins)
             let query = supabase
                 .from('accounts_receivable')
@@ -104,7 +136,11 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                 .order('data_vencimento', { ascending: true });
 
             if (selectedProject) {
-                query = query.eq('project_code', selectedProject);
+                if (projectNames.includes(selectedProject)) {
+                    query = query.eq('project_name', selectedProject);
+                } else {
+                    query = query.eq('project_code', selectedProject);
+                }
             }
 
             const { data, error } = await query
@@ -112,23 +148,26 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
             if (error) throw error
 
             if (data) {
-                // Map the data with projects and categories
+                // Map the data with projects, categories, and client names
                 const mappedData = data.map((r: any) => {
+                    const client = getClient(r.codigo_cliente_fornecedor, null)
                     return {
                         ...r,
-                        projects: { name: r.project_name || 'Nao Informado' },
-                        categories: { description: categoryMap.get(r.category_code || '') || 'Outros' }
+                        projects: { name: r.project_name || 'N/A' },
+                        categories: { description: categoryMap.get(r.category_code || '') || 'Outros' },
+                        client_name: client?.nome_fantasia || client?.razao_social || 'N/A',
+                        client_cpf_cnpj: client?.cnpj_cpf || ''
                     }
                 })
 
-                setReceipts(mappedData as AccountReceivable[])
+                setReceipts(mappedData as MappedAccountReceivable[])
             }
         } catch (error) {
             console.error('Error fetching receipts:', error)
         } finally {
             setLoading(false)
         }
-    }, [timeRange, customDates, selectedProject])
+    }, [timeRange, customDates, selectedProject, getClient, projects, projectNames])
 
     useEffect(() => {
         fetchReceipts()
@@ -149,10 +188,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
             result = result.filter(r => r.status_titulo === statusFilter)
         }
 
-        // Project filter
-        if (selectedProject) {
-            result = result.filter(r => r.project_code === selectedProject)
-        }
+        // Nota: O filtro de projeto já é aplicado na query do banco de dados
 
         // Sorting
         result.sort((a, b) => {
@@ -166,6 +202,9 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
             } else if (sortConfig.key === 'category_description') {
                 aValue = a.categories?.description
                 bValue = b.categories?.description
+            } else if (sortConfig.key === 'client_name') {
+                aValue = a.client_name
+                bValue = b.client_name
             } else {
                 aValue = a[sortConfig.key as keyof AccountReceivable] as string | number | null
                 bValue = b[sortConfig.key as keyof AccountReceivable] as string | number | null
@@ -190,7 +229,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
         })
 
         return result
-    }, [receipts, statusFilter, selectedProject, sortConfig])
+    }, [receipts, statusFilter, sortConfig])
 
     const handleStatusChange = async (codigo_lancamento_omie: number, newStatus: string) => {
         try {
@@ -239,7 +278,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                     <h1 className="text-3xl font-bold tracking-tight">Contas a Receber</h1>
                     <p className="text-muted-foreground">Gerenciamento de recebimentos e previsoes</p>
                 </div>
-                {loading && (
+                {(loading || clientsLoading) && (
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-app"></div>
                 )}
             </div>
@@ -298,8 +337,8 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                             className="w-full bg-muted-app border border-border-app rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-app transition-all appearance-none"
                         >
                             <option value="">Todas as Obras</option>
-                            {projects.map(project => (
-                                <option key={project.id} value={project.id}>{project.name}</option>
+                            {projectNames.map(name => (
+                                <option key={name} value={name}>{name}</option>
                             ))}
                         </select>
                     </div>
@@ -390,6 +429,12 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                                         {sortConfig.key === 'data_vencimento' && <ChevronDown className={`w-4 h-4 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />}
                                     </div>
                                 </th>
+                                <th className="px-6 py-4 font-medium cursor-pointer hover:text-white" onClick={() => handleSort('client_name')}>
+                                    <div className="flex items-center gap-1">
+                                        Cliente
+                                        {sortConfig.key === 'client_name' && <ChevronDown className={`w-4 h-4 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />}
+                                    </div>
+                                </th>
                                 <th className="px-6 py-4 font-medium cursor-pointer hover:text-white" onClick={() => handleSort('project_name')}>
                                     <div className="flex items-center gap-1">
                                         Obra / Projeto
@@ -418,6 +463,11 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                                     <tr key={receipt.codigo_lancamento_omie} className="hover:bg-white/5 transition-colors">
                                         <td className="px-6 py-4 font-medium text-foreground-app whitespace-nowrap">
                                             {formatDate(receipt.data_vencimento)}
+                                        </td>
+                                        <td className="px-6 py-4 text-muted-foreground">
+                                            <span className="truncate max-w-[180px] block font-medium text-white" title={receipt.client_name}>
+                                                {receipt.client_name}
+                                            </span>
                                         </td>
                                         <td className="px-6 py-4 text-muted-foreground">
                                             <div className="font-medium text-foreground-app">{receipt.projects?.name || '-'}</div>
@@ -456,7 +506,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                                    <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
                                         Nenhum lancamento encontrado para os filtros selecionados.
                                     </td>
                                 </tr>

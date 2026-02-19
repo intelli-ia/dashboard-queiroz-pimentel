@@ -11,6 +11,7 @@ import Image from 'next/image'
 
 import { format, subDays } from 'date-fns'
 import { supabase } from '@/lib/supabase'
+import { ClientProvider } from '@/context/ClientContext'
 import type { ProjectOption } from '@/types'
 
 export default function Home() {
@@ -74,6 +75,7 @@ export default function Home() {
   }
 
   return (
+    <ClientProvider>
     <main className="min-h-screen bg-background-app text-foreground-app flex">
       {/* Navigation Sidebar */}
       <aside className={`${isSidebarCollapsed ? 'w-20' : 'w-20 md:w-64'} border-r border-border-app bg-card-app/50 backdrop-blur-xl flex flex-col p-4 fixed h-full z-50 transition-all duration-300`}>
@@ -220,5 +222,6 @@ export default function Home() {
         )}
       </div>
     </main>
+    </ClientProvider>
   )
 }
