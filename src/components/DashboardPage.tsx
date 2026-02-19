@@ -166,7 +166,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
           project_code,
           project_name
         `)
-        .in('status_titulo', ['PAGO', 'LIQUIDADO'])
+        .in('status_titulo', ['PAGO', 'LIQUIDADO', 'Pago', 'Liquidado'])
         .gte('data_vencimento', startDate)
         .lte('data_vencimento', endDate)
 
@@ -327,8 +327,16 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
       CSLL: 0
     }
 
+    const normalizedPriceFilter = selectedProjectLabel.toLowerCase().trim()
+    const normalizedIdFilter = resolvedProjectCode.toLowerCase().trim()
+
     taxPayables
-      .filter(p => !selectedProject || p.project_code === resolvedProjectCode || p.project_name === selectedProjectLabel)
+      .filter(p => {
+        if (!selectedProject) return true
+        const pName = (p.project_name || '').toLowerCase().trim()
+        const pCode = (p.project_code || '').toLowerCase().trim()
+        return pCode === normalizedIdFilter || pName === normalizedPriceFilter
+      })
       .forEach(p => {
         totals.INSS += Number(p.valor_inss) || 0
         totals.IR += Number(p.valor_ir) || 0
@@ -345,9 +353,8 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
       { name: 'PIS', value: totals.PIS },
       { name: 'COFINS', value: totals.COFINS },
       { name: 'CSLL', value: totals.CSLL },
-    ].filter(item => item.value > 0)
-      .sort((a, b) => b.value - a.value)
-  }, [taxPayables, selectedProject, resolvedProjectCode])
+    ].sort((a, b) => b.value - a.value)
+  }, [taxPayables, selectedProject, selectedProjectLabel, resolvedProjectCode])
 
 
   const docTypeLabels: Record<string, string> = {
