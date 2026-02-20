@@ -391,7 +391,8 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
             Pagamentos
           </div>
           <div className="text-2xl font-bold text-white">{formatCurrency(totalPagamentos)}</div>
-          <p className="text-sm text-muted-foreground">Saídas liquidadas no período</p>
+          <p className="text-sm text-muted-foreground">Saídas efetivadas (Fluxo de Caixa)</p>
+          <p className="text-[10px] text-muted-foreground mt-1 uppercase italic">* Baseado na data de pagamento</p>
         </div>
 
         {/* Receitas */}

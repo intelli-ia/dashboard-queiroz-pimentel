@@ -222,7 +222,11 @@ export default function AccountsPayablePage({
             total: filteredAndSortedPayables.reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0),
             liquidado: filteredAndSortedPayables
                 .filter(p => p.status_titulo === 'LIQUIDADO' || p.status_titulo === 'PAGO')
-                .reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0),
+                .reduce((acc, curr) => {
+                    // Tenta usar valor_pago se disponível, senão usa valor_documento
+                    const pago = (curr as any).valor_pago || curr.valor_documento || 0
+                    return acc + Number(pago)
+                }, 0),
             aberto: filteredAndSortedPayables
                 .filter(p => p.status_titulo === 'ABERTO')
                 .reduce((acc, curr) => acc + (Number(curr.valor_documento) || 0), 0),
@@ -296,19 +300,21 @@ export default function AccountsPayablePage({
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total Geral</p>
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total por Vencimento</p>
                         <p className="text-3xl font-bold mt-1 text-white">
                             {formatCurrency(totals.total)}
                         </p>
+                        <p className="text-[10px] text-muted-foreground mt-1 uppercase">Obrigações vigentes</p>
                     </div>
                 </div>
 
                 <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Pago (Liquidado)</p>
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total Pago (Caixa)</p>
                         <p className="text-3xl font-bold mt-1 text-green-400">
                             {formatCurrency(totals.liquidado)}
                         </p>
+                        <p className="text-[10px] text-muted-foreground mt-1 uppercase">Efetivado no período</p>
                     </div>
                 </div>
 
