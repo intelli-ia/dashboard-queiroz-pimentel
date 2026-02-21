@@ -113,7 +113,7 @@ export default function AccountsPayablePage({
                     ...item,
                     id: item.codigo_lancamento_omie,
                     category_description: categoryMap.get(item.category_code || '') || 'N/A',
-                    project_name_display: projectMap.get(item.project_code || '') || 'N/A',
+                    project_name_display: item.project_name || projectMap.get(item.project_code || '') || 'N/A',
                     display_date: displayDate,
                     installment_label: installmentLabel,
                     client_name: client?.nome_fantasia || client?.razao_social || 'N/A',
