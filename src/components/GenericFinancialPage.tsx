@@ -146,12 +146,10 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 }
             }
 
-            // Unify logic for Movimentos to match Dashboard Payments
+            // Show all movements except CONTA_A_PAGAR group
             if (title === 'Movimentos') {
                 query = query
-                    .eq('direcao', 'SAIDA')
-                    .eq('is_efetivado', true)
-                    .not('data_pagamento', 'is', null)
+                    .neq('grupo', 'CONTA_A_PAGAR')  // Exclude only "Contas a Pagar" group
             }
 
             query = query
@@ -270,24 +268,17 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
     }, [movements])
 
     const totals = useMemo(() => {
-        const total = filteredMovements.reduce((acc, curr) => acc + curr.valor_documento, 0)
+        const totalReceitas = filteredMovements
+            .filter(m => m.direcao === 'ENTRADA')
+            .reduce((acc, curr) => acc + curr.valor_documento, 0)
 
-        // Calculate monthly average
-        const monthlyTotals = new Map<string, number>()
-        filteredMovements.forEach(m => {
-            const date = m.display_date || ''
-            if (date) {
-                const monthKey = date.substring(0, 7)
-                monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) || 0) + m.valor_documento)
-            }
-        })
-
-        const totalMonths = monthlyTotals.size
-        const mediaMensal = totalMonths > 0 ? total / totalMonths : 0
+        const totalDespesas = filteredMovements
+            .filter(m => m.direcao === 'SAIDA')
+            .reduce((acc, curr) => acc + curr.valor_documento, 0)
 
         return {
-            total,
-            mediaMensal
+            totalReceitas,
+            totalDespesas
         }
     }, [filteredMovements])
 
@@ -355,21 +346,21 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Total de Pagamentos</p>
-                        <p className="text-3xl font-bold mt-1 text-white">
-                            {formatCurrency(totals.total)}
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Receitas</p>
+                        <p className="text-3xl font-bold mt-1 text-green-400">
+                            {formatCurrency(totals.totalReceitas)}
                         </p>
-                        <p className="text-md text-muted-foreground mt-1">Saídas efetivadas no período</p>
+                        <p className="text-md text-muted-foreground mt-1">Total de entradas no período</p>
                     </div>
                 </div>
 
                 <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Média Mensal</p>
-                        <p className="text-3xl font-bold mt-1 text-orange-400">
-                            {formatCurrency(totals.mediaMensal)}
+                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Despesas</p>
+                        <p className="text-3xl font-bold mt-1 text-red-400">
+                            {formatCurrency(totals.totalDespesas)}
                         </p>
-                        <p className="text-md text-muted-foreground mt-1">Média de pagamentos por mês</p>
+                        <p className="text-md text-muted-foreground mt-1">Total de saídas no período</p>
                     </div>
                 </div>
             </div>
@@ -379,7 +370,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 <div className="glass rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-4">
                         <BarChart3 className="w-5 h-5 text-primary-app" />
-                        <h3 className="text-lg font-semibold">Custos por Categoria</h3>
+                        <h3 className="text-lg font-semibold">Movimentos por Categoria</h3>
                     </div>
                     <div className="h-[280px]">
                         <ResponsiveContainer width="100%" height="100%">
