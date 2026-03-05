@@ -19,7 +19,7 @@ import { supabase } from '@/lib/supabase'
 import { fetchAll } from '@/lib/supabase-utils'
 import { format, subDays, parseISO } from 'date-fns'
 import { useClientContext } from '@/context/ClientContext'
-import type { PageProps, NfeItem, NfeHeader } from '@/types'
+import type { PageProps, NfeItem } from '@/types'
 import GlobalFilterBar from './GlobalFilterBar'
 
 const formatCurrency = (value: number) => {
@@ -45,9 +45,7 @@ const formatDate = (dateString: string | null) => {
 
 interface MappedNfeItem extends NfeItem {
     supplier_name: string
-    date_emissao: string | null
     display_name: string
-    header_info?: NfeHeader
 }
 
 type SortField = keyof MappedNfeItem | string
@@ -67,7 +65,7 @@ export default function NfeItemsPage({
     const [searchTerm, setSearchTerm] = useState('')
 
     // Sort State
-    const [sortField, setSortField] = useState<SortField>('date_emissao')
+    const [sortField, setSortField] = useState<SortField>('nfe_emissao')
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
     const fetchItems = useCallback(async () => {
@@ -93,25 +91,15 @@ export default function NfeItemsPage({
                 startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd');
             }
 
-            // Query nfe_items joined with nfe_headers
+            // Query itens_nfe (new schema with denormalized data)
             let query = supabase
-                .from('nfe_items')
-                .select(`
-                    *,
-                    nfe_headers!inner (
-                        id_recebimento,
-                        nome_fantasia,
-                        razao_social,
-                        data_emissao,
-                        project_code,
-                        numero_nfe
-                    )
-                `)
-                .gte('nfe_headers.data_emissao', startDate)
-                .lte('nfe_headers.data_emissao', endDate);
+                .from('itens_nfe')
+                .select('*')
+                .gte('nfe_emissao', startDate)
+                .lte('nfe_emissao', endDate);
 
             if (selectedProject) {
-                query = query.eq('nfe_headers.project_code', selectedProject);
+                query = query.eq('projeto_id', selectedProject);
             }
 
             const data = await fetchAll<any>(query)
@@ -119,10 +107,8 @@ export default function NfeItemsPage({
             if (data) {
                 const mappedData = data.map((item: any) => ({
                     ...item,
-                    display_name: item.nome_item_normalizado || item.descricao_produto || '',
-                    supplier_name: item.nfe_headers.nome_fantasia || item.nfe_headers.razao_social || 'N/A',
-                    date_emissao: item.nfe_headers.data_emissao,
-                    header_info: item.nfe_headers
+                    display_name: item.produto_descricao || '',
+                    supplier_name: item.fornecedor_nome || item.fornecedor_razao_social || 'N/A',
                 }))
                 setItems(mappedData)
             }
@@ -154,9 +140,9 @@ export default function NfeItemsPage({
             const lowerSearch = searchTerm.toLowerCase()
             result = result.filter(item =>
                 item.display_name.toLowerCase().includes(lowerSearch) ||
-                item.descricao_produto?.toLowerCase().includes(lowerSearch) ||
+                item.produto_descricao?.toLowerCase().includes(lowerSearch) ||
                 item.supplier_name.toLowerCase().includes(lowerSearch) ||
-                item.codigo_produto?.toLowerCase().includes(lowerSearch)
+                item.produto_codigo?.toLowerCase().includes(lowerSearch)
             )
         }
 
@@ -184,7 +170,7 @@ export default function NfeItemsPage({
 
     // KPI Calculations
     const totalSpent = useMemo(() =>
-        filteredAndSortedItems.reduce((acc, curr) => acc + (curr.valor_total || 0), 0),
+        filteredAndSortedItems.reduce((acc, curr) => acc + (curr.item_valor_total || 0), 0),
         [filteredAndSortedItems]
     )
 
@@ -194,7 +180,7 @@ export default function NfeItemsPage({
         filteredAndSortedItems.forEach(item => {
             const key = item.display_name || 'S/N'
             const existing = counts.get(key) || { desc: key, qty: 0 }
-            counts.set(key, { desc: key, qty: existing.qty + (item.quantidade || 0) })
+            counts.set(key, { desc: key, qty: existing.qty + (item.item_qtde_nfe || 0) })
         })
         return Array.from(counts.values()).reduce((prev, curr) => (prev.qty > curr.qty) ? prev : curr, { desc: '-', qty: 0 })
     }, [filteredAndSortedItems])
@@ -205,7 +191,7 @@ export default function NfeItemsPage({
         filteredAndSortedItems.forEach(item => {
             const key = item.display_name || 'S/N'
             const existing = spends.get(key) || { desc: key, total: 0 }
-            spends.set(key, { desc: key, total: existing.total + (item.valor_total || 0) })
+            spends.set(key, { desc: key, total: existing.total + (item.item_valor_total || 0) })
         })
         return Array.from(spends.values()).reduce((prev, curr) => (prev.total > curr.total) ? prev : curr, { desc: '-', total: 0 })
     }, [filteredAndSortedItems])
@@ -280,10 +266,10 @@ export default function NfeItemsPage({
                     <table className="w-full text-left text-sm">
                         <thead className="bg-white/5 text-muted-foreground border-b border-border-app">
                             <tr>
-                                <th className="px-6 py-4 font-medium cursor-pointer hover:text-white" onClick={() => handleSort('date_emissao')}>
+                                <th className="px-6 py-4 font-medium cursor-pointer hover:text-white" onClick={() => handleSort('nfe_emissao')}>
                                     <div className="flex items-center gap-1">
                                         Data
-                                        {sortField === 'date_emissao' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
+                                        {sortField === 'nfe_emissao' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
                                     </div>
                                 </th>
                                 <th className="px-6 py-4 font-medium cursor-pointer hover:text-white" onClick={() => handleSort('display_name')}>
@@ -298,22 +284,22 @@ export default function NfeItemsPage({
                                         {sortField === 'supplier_name' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
                                     </div>
                                 </th>
-                                <th className="px-6 py-4 font-medium text-right cursor-pointer hover:text-white" onClick={() => handleSort('quantidade')}>
+                                <th className="px-6 py-4 font-medium text-right cursor-pointer hover:text-white" onClick={() => handleSort('item_qtde_nfe')}>
                                     <div className="flex items-center justify-end gap-1">
                                         Qtd / Un
-                                        {sortField === 'quantidade' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
+                                        {sortField === 'item_qtde_nfe' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
                                     </div>
                                 </th>
-                                <th className="px-6 py-4 font-medium text-right cursor-pointer hover:text-white" onClick={() => handleSort('preco_unitario')}>
+                                <th className="px-6 py-4 font-medium text-right cursor-pointer hover:text-white" onClick={() => handleSort('item_preco_unitario')}>
                                     <div className="flex items-center justify-end gap-1">
                                         Preço Un.
-                                        {sortField === 'preco_unitario' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
+                                        {sortField === 'item_preco_unitario' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
                                     </div>
                                 </th>
-                                <th className="px-6 py-4 font-medium text-right cursor-pointer hover:text-white" onClick={() => handleSort('valor_total')}>
+                                <th className="px-6 py-4 font-medium text-right cursor-pointer hover:text-white" onClick={() => handleSort('item_valor_total')}>
                                     <div className="flex items-center justify-end gap-1">
                                         Total
-                                        {sortField === 'valor_total' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
+                                        {sortField === 'item_valor_total' && <ChevronDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />}
                                     </div>
                                 </th>
                             </tr>
@@ -321,30 +307,30 @@ export default function NfeItemsPage({
                         <tbody className="divide-y divide-border-app">
                             {filteredAndSortedItems.length > 0 ? (
                                 filteredAndSortedItems.map((item) => (
-                                    <tr key={item.id_item} className="hover:bg-white/5 transition-colors">
+                                    <tr key={item.id} className="hover:bg-white/5 transition-colors">
                                         <td className="px-6 py-4 font-medium text-foreground-app whitespace-nowrap">
-                                            {formatDate(item.date_emissao)}
+                                            {formatDate(item.nfe_emissao)}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="text-white font-medium">
                                                 {item.display_name}
                                             </div>
-                                            <div className="text-xs text-muted-foreground">{item.codigo_produto || '-'}</div>
+                                            <div className="text-xs text-muted-foreground">{item.produto_codigo || '-'}</div>
                                         </td>
                                         <td className="px-6 py-4 text-muted-foreground">
                                             <div className="font-medium text-white truncate max-w-[200px]" title={item.supplier_name}>
                                                 {item.supplier_name}
                                             </div>
-                                            <div className="text-xs">NF: {item.header_info?.numero_nfe || '-'}</div>
+                                            <div className="text-xs">NF: {item.nfe_numero || '-'}</div>
                                         </td>
                                         <td className="px-6 py-4 text-right whitespace-nowrap text-muted-foreground">
-                                            <span className="text-white font-medium">{formatNumber(item.quantidade || 0)}</span> {item.unidade}
+                                            <span className="text-white font-medium">{formatNumber(item.item_qtde_nfe || 0)}</span> {item.produto_unidade_nfe}
                                         </td>
                                         <td className="px-6 py-4 text-right whitespace-nowrap text-muted-foreground">
-                                            {formatCurrency(item.preco_unitario || 0)}
+                                            {formatCurrency(item.item_preco_unitario || 0)}
                                         </td>
                                         <td className="px-6 py-4 text-right whitespace-nowrap text-white font-bold">
-                                            {formatCurrency(item.valor_total || 0)}
+                                            {formatCurrency(item.item_valor_total || 0)}
                                         </td>
                                     </tr>
                                 ))
