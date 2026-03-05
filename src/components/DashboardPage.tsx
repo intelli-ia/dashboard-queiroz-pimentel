@@ -31,6 +31,13 @@ const formatCompact = (value: number) => {
   return value.toString()
 }
 
+// Helper function to format document type
+const formatDocumentType = (docType: string | null | undefined): string => {
+  if (!docType) return 'Outros'
+  if (docType === '9999' || docType === '99999') return 'Outros'
+  return docType
+}
+
 interface MovementWithCategory extends FinancialMovement {
   category_description?: string
 }
@@ -287,7 +294,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
     movements
       .filter(m => !selectedProject || m.project_code === selectedProject)
       .forEach(m => {
-        const docType = m.document_type || 'Outros'
+        const docType = formatDocumentType(m.document_type)
         const valor = m.valor_pago || 0
         docTypeMap.set(docType, (docTypeMap.get(docType) || 0) + valor)
       })
@@ -368,7 +375,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
   }
 
   return (
-    <div className="space-y-6 px-4 md:px-8 pb-8">
+    <div className="space-y-4 px-3 md:px-6 py-4 max-w-full overflow-hidden pb-8">
       <GlobalFilterBar
         timeRange={timeRange}
         setTimeRange={setTimeRange}
@@ -383,7 +390,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
       />
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {/* Pagamentos */}
         <div className="glass p-6 rounded-2xl space-y-2">
           <div className="flex items-center gap-2 text-muted-foreground text-sm font-medium uppercase tracking-wider">
@@ -435,7 +442,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
 
       {/* Line Chart - Monthly Values */}
       {!loading && monthlyChartData.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
           <div className="glass rounded-xl p-6 flex flex-col">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
@@ -578,7 +585,7 @@ export default function DashboardPage({ timeRange, setTimeRange, customDates, se
 
       {/* Two Pie Charts side by side */}
       {!loading && (categoryChartData.length > 0 || documentTypeChartData.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
           {/* Pie Chart 1: Category */}
           {categoryChartData.length > 0 && (
             <div className="glass rounded-xl p-4">

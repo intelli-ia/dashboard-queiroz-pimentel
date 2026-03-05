@@ -328,7 +328,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
     }
 
     return (
-        <div className="space-y-6 px-4 md:px-8">
+        <div className="space-y-4 px-3 md:px-6 py-4 max-w-full overflow-hidden">
             <GlobalFilterBar
                 timeRange={timeRange}
                 setTimeRange={setTimeRange}
@@ -343,24 +343,24 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
             />
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                <div className="bg-card-app/40 border border-border-app p-4 md:p-5 rounded-xl md:rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Receitas</p>
-                        <p className="text-3xl font-bold mt-1 text-green-400">
+                        <p className="text-muted-foreground text-xs md:text-sm font-medium uppercase tracking-wider">Receitas</p>
+                        <p className="text-2xl md:text-3xl font-bold mt-1 text-green-400 break-words">
                             {formatCurrency(totals.totalReceitas)}
                         </p>
-                        <p className="text-md text-muted-foreground mt-1">Total de entradas no período</p>
+                        <p className="text-xs md:text-sm text-muted-foreground mt-1">Total de entradas no período</p>
                     </div>
                 </div>
 
-                <div className="bg-card-app/40 border border-border-app p-6 rounded-2xl backdrop-blur-md relative overflow-hidden group">
+                <div className="bg-card-app/40 border border-border-app p-4 md:p-5 rounded-xl md:rounded-2xl backdrop-blur-md relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-muted-foreground text-sm font-medium uppercase tracking-wider">Despesas</p>
-                        <p className="text-3xl font-bold mt-1 text-red-400">
+                        <p className="text-muted-foreground text-xs md:text-sm font-medium uppercase tracking-wider">Despesas</p>
+                        <p className="text-2xl md:text-3xl font-bold mt-1 text-red-400 break-words">
                             {formatCurrency(totals.totalDespesas)}
                         </p>
-                        <p className="text-md text-muted-foreground mt-1">Total de saídas no período</p>
+                        <p className="text-xs md:text-sm text-muted-foreground mt-1">Total de saídas no período</p>
                     </div>
                 </div>
             </div>
@@ -438,21 +438,21 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                 )}
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse min-w-[900px]">
                         <thead>
                             <tr className="bg-muted-app/30 border-b border-border-app">
                                 {[
-                                    { id: 'display_date', label: 'Data', width: 'w-32' },
-                                    { id: 'client_name', label: 'Cliente', width: 'w-56' },
-                                    { id: 'numero_documento', label: 'Nº Documento', width: 'w-40' },
-                                    { id: 'tipo_movimento', label: 'Tipo', width: 'w-44' },
-                                    { id: 'direcao', label: 'Direção', width: 'w-32' },
-                                    { id: 'category_description', label: 'Categoria' },
-                                    { id: 'project_name', label: 'Projeto' },
-                                    { id: 'valor_documento', label: 'Valor', width: 'w-36' },
-                                    { id: 'status_titulo', label: 'Status', width: 'w-32' }
+                                    { id: 'display_date', label: 'Data', width: 'min-w-[100px]' },
+                                    { id: 'client_name', label: 'Cliente', width: 'min-w-[140px]' },
+                                    { id: 'numero_documento', label: 'Nº Documento', width: 'min-w-[110px]' },
+                                    { id: 'tipo_movimento', label: 'Tipo', width: 'min-w-[110px]' },
+                                    { id: 'direcao', label: 'Direção', width: 'min-w-[90px]' },
+                                    { id: 'category_description', label: 'Categoria', width: 'min-w-[110px]' },
+                                    { id: 'project_name', label: 'Projeto', width: 'min-w-[100px]' },
+                                    { id: 'valor_documento', label: 'Valor', width: 'min-w-[110px]' },
+                                    { id: 'status_titulo', label: 'Status', width: 'min-w-[90px]' }
                                 ].map(col => (
-                                    <th key={col.id} className={`px-4 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider ${col.width || ''}`}>
+                                    <th key={col.id} className={`px-2 md:px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider ${col.width || ''}`}>
                                         <div className="flex flex-col gap-2">
                                             <button
                                                 onClick={() => handleSort(col.id as SortField)}
@@ -470,7 +470,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                     <select
                                                         value={filters[col.id]}
                                                         onChange={(e) => updateFilter(col.id, e.target.value)}
-                                                        className="w-full h-8 px-2 bg-background-app/50 border border-border-app/50 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-app/50 transition-all appearance-none cursor-pointer"
+                                                        className="w-full h-7 px-1.5 bg-background-app/50 border border-border-app/50 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-primary-app/50 transition-all appearance-none cursor-pointer"
                                                     >
                                                         <option value="">Todos</option>
                                                         {(uniqueOptions[col.id as keyof typeof uniqueOptions] || []).map((option) => (
@@ -479,12 +479,12 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                     </select>
                                                 ) : (
                                                     <>
-                                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 group-focus-within:text-primary-app transition-colors" />
+                                                        <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 group-focus-within:text-primary-app transition-colors" />
                                                         <input
                                                             type="text"
                                                             value={filters[col.id]}
                                                             onChange={(e) => updateFilter(col.id, e.target.value)}
-                                                            className="w-full h-8 pl-7 pr-2 bg-background-app/50 border border-border-app/50 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-app/50 transition-all"
+                                                            className="w-full h-7 pl-6 pr-1.5 bg-background-app/50 border border-border-app/50 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-primary-app/50 transition-all"
                                                             placeholder="Filtrar..."
                                                         />
                                                     </>
@@ -502,7 +502,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                             {filteredMovements.length > 0 ? (
                                 filteredMovements.map((item) => (
                                     <tr key={item.id} className="hover:bg-white/5 transition-colors group">
-                                        <td className="px-4 py-3 text-sm">
+                                        <td className="px-2 md:px-3 py-2.5 text-xs md:text-sm">
                                             <div className="flex items-center gap-2">
                                                 <span>{item.display_date ? format(parseISO(item.display_date), 'dd/MM/yyyy') : '-'}</span>
                                                 {item.is_paid && (
@@ -512,7 +512,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-sm">
+                                        <td className="px-2 md:px-3 py-2.5 text-xs md:text-sm">
                                             <div className="flex flex-col">
                                                 <span className="font-medium text-white truncate max-w-[200px]" title={item.client_name}>
                                                     {item.client_name}
@@ -524,7 +524,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-sm">
+                                        <td className="px-2 md:px-3 py-2.5 text-xs md:text-sm">
                                             <div className="flex flex-col">
                                                 <span className="font-mono">{item.numero_documento || 'S/N'}</span>
                                                 {item.installment_label && (
@@ -534,7 +534,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-sm">
+                                        <td className="px-2 md:px-3 py-2.5 text-xs md:text-sm">
                                             <div className="flex items-center gap-2">
                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${item.is_efetivado
                                                     ? 'bg-green-500/10 text-green-400 border-green-500/20'
@@ -547,7 +547,7 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-sm">
+                                        <td className="px-2 md:px-3 py-2.5 text-xs md:text-sm">
                                             <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase border ${item.direcao === 'ENTRADA'
                                                 ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
                                                 : 'bg-orange-500/10 text-orange-400 border-orange-500/20'
@@ -555,18 +555,18 @@ export default function GenericFinancialPage({ title, documentTypes, fetchAllTyp
                                                 {item.direcao === 'ENTRADA' ? '↓ ENTRADA' : '↑ SAIDA'}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-sm">
+                                        <td className="px-2 md:px-3 py-2.5 text-xs md:text-sm">
                                             <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-medium border border-blue-500/20">
                                                 {item.category_description}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-sm">
+                                        <td className="px-2 md:px-3 py-2.5 text-xs md:text-sm">
                                             <span className="text-muted-foreground">{item.project_name}</span>
                                         </td>
-                                        <td className="px-4 py-3 text-sm font-semibold text-white">
+                                        <td className="px-2 md:px-3 py-2.5 text-xs md:text-sm font-semibold text-white">
                                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor_documento)}
                                         </td>
-                                        <td className="px-4 py-3 text-sm">
+                                        <td className="px-2 md:px-3 py-2.5 text-xs md:text-sm">
                                             <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase border ${item.status_titulo === 'LIQUIDADO'
                                                 ? 'bg-green-500/10 text-green-500 border-green-500/20'
                                                 : item.status_titulo === 'ABERTO'
