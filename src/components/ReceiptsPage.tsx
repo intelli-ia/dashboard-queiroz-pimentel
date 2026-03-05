@@ -271,7 +271,7 @@ export default function ReceiptsPage({ timeRange, setTimeRange, customDates, set
     )
 
     return (
-        <div className="p-6 md:p-8 space-y-8 animate-in fade-in duration-700 max-w-[1600px] mx-auto">
+        <div className="p-3 md:p-6 space-y-4 md:space-y-6 animate-in fade-in duration-700 max-w-full mx-auto overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>

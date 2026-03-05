@@ -211,7 +211,7 @@ export default function NfeItemsPage({
     }, [filteredAndSortedItems])
 
     return (
-        <div className="space-y-6 px-4 md:px-8 pb-8">
+        <div className="space-y-4 px-3 md:px-6 py-4 max-w-full overflow-hidden pb-8">
             <GlobalFilterBar
                 timeRange={timeRange}
                 setTimeRange={setTimeRange}
@@ -226,7 +226,7 @@ export default function NfeItemsPage({
             />
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 <div className="glass p-6 rounded-2xl space-y-2 relative overflow-hidden group">
                     <div className="flex items-center gap-2 text-muted-foreground text-sm font-medium uppercase tracking-wider text-green-400">
                         <ShoppingBag className="w-4 h-4" /> Mais Comprado (Volume)
