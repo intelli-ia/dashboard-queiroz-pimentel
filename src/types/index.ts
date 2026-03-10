@@ -325,6 +325,10 @@ export interface NfeItem {
 
   // Departments
   departamentos: string | null
+
+  // Normalized fields
+  nome_normalizado: string | null
+  categoria_normalizado: string | null
 }
 
 // Client lookup maps type for reuse
