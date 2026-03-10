@@ -169,29 +169,166 @@ export interface NfeHeader {
 
 // NFE Items - Itens das Notas Fiscais
 export interface NfeItem {
-  id_item: number
-  id_recebimento: number
-  codigo_produto: string | null
-  id_produto: number | null
-  descricao_produto: string | null
-  nome_item_normalizado: string | null
-  ncm: string | null
-  cfop: string | null
-  category_code: string | null
-  unidade: string | null
-  quantidade: number | null
-  preco_unitario: number | null
-  valor_total: number | null
-  desconto: number | null
-  sequencia: number | null
-  icms_origem: string | null
+  // Primary Key
+  id: number
+  criado_em: string | null
+
+  // Item Information
+  item_sequencia: number | null
+  item_id: number | null
+  item_produto_id: number | null
+  item_pedido_id: number | null
+  item_preco_unitario: number | null
+  item_qtde_nfe: number | null
+  item_desconto: number | null
+  item_valor_total: number | null
+  item_aprox_tributos: number | null
+  item_categoria: string | null
+  item_adicionar_novo: string | null
+  item_associar_existente: string | null
+  item_ignorar: string | null
+
+  // Product Information
+  produto_codigo: string | null
+  produto_descricao: string | null
+  produto_ncm: string | null
+  produto_cfop_saida: string | null
+  produto_unidade_nfe: string | null
+
+  // Adjustment Fields
+  ajuste_cfop_entrada: string | null
+  ajuste_unidade: string | null
+  ajuste_qtde_recebida: number | null
+  ajuste_gerar_financeiro: string | null
+  ajuste_gerar_mov_estoque: string | null
+  ajuste_local_estoque_id: number | null
+
+  // ICMS Tax Information
   icms_sit_trib: string | null
-  ipi_enquadramento: string | null
+  icms_nao_cred: string | null
+  icms_origem: string | null
+  icms_sit_trib_sn: string | null
+
+  // ICMS-ST Tax Information
+  icmsst_aliq: number | null
+  icmsst_bc: number | null
+  icmsst_valor: number | null
+  icmsst_aliq_fcp: number | null
+  icmsst_bc_fcp: number | null
+  icmsst_valor_fcp: number | null
+  icmsst_marg_vr_ad: number | null
+  icmsst_red_bc: number | null
+
+  // PIS Tax Information
+  pis_sit_trib_nfe: string | null
+  pis_aliq_nfe: number | null
+  pis_bc_nfe: number | null
+  pis_valor_nfe: number | null
+  pis_sit_trib_entrada: string | null
+  pis_tp_calc: string | null
+  pis_aliq: number | null
+  pis_bc: number | null
+  pis_valor: number | null
+
+  // COFINS Tax Information
+  cofins_sit_trib_nfe: string | null
+  cofins_aliq_nfe: number | null
+  cofins_bc_nfe: number | null
+  cofins_valor_nfe: number | null
+  cofins_sit_trib_entrada: string | null
+  cofins_tp_calc: string | null
+  cofins_aliq: number | null
+  cofins_bc: number | null
+  cofins_valor: number | null
+
+  // IPI Tax Information
   ipi_sit_trib: string | null
-  pis_sit_trib: string | null
-  cofins_sit_trib: string | null
-  // Joined relation
-  headers?: NfeHeader
+  ipi_enq: string | null
+  ipi_valor_dev: number | null
+
+  // CBS Tax Information (New tax regime)
+  cbs_aliq_reg: number | null
+  cbs_perc_diferimento: number | null
+  cbs_perc_reducao: number | null
+  cbs_valor: number | null
+  cbs_valor_diferimento: number | null
+
+  // IBS Tax Information (New tax regime)
+  ibs_aliq_mun_reg: number | null
+  ibs_aliq_uf_reg: number | null
+  ibs_valor: number | null
+  ibs_valor_mun: number | null
+  ibs_valor_uf: number | null
+  ibs_cbs_class_trib: string | null
+  ibs_cbs_cst: string | null
+  ibs_cbs_base: number | null
+
+  // Cost Information
+  custo_cofins: string | null
+  custo_icms: string | null
+  custo_icmsst: string | null
+  custo_ipi: string | null
+  custo_pis: string | null
+  custo_aliq_cred_cofins: number | null
+  custo_aliq_cred_pis: number | null
+  custo_valor_icmsst: number | null
+
+  // NFE Header Information (denormalized)
+  nfe_chave: string | null
+  nfe_numero: string | null
+  nfe_serie: string | null
+  nfe_modelo: string | null
+  nfe_emissao: string | null
+  nfe_natureza_operacao: string | null
+  nfe_valor_total: number | null
+
+  // Supplier Information (denormalized)
+  fornecedor_id: number | null
+  fornecedor_cnpj_cpf: string | null
+  fornecedor_nome: string | null
+  fornecedor_razao_social: string | null
+
+  // Receipt/Order Information
+  recebimento_id: number | null
+  recebimento_etapa: string | null
+
+  // Category and Project
+  categoria_compra: string | null
+  conta_id: number | null
+  projeto_id: number | null
+
+  // Freight and Totals
+  tipo_frete: string | null
+  total_produtos: number | null
+  total_nfe: number | null
+  total_aprox_tributos: number | null
+
+  // Installments
+  parcela_codigo: string | null
+  parcela_quantidade: number | null
+
+  // Status Flags
+  status_bloqueado: string | null
+  status_cancelada: string | null
+  status_devolvido: string | null
+  status_faturado: string | null
+  status_recebido: string | null
+
+  // Operation
+  operacao_codigo: string | null
+
+  // Dates
+  data_registro: string | null
+  data_inclusao: string | null
+  data_faturamento: string | null
+  data_recebimento: string | null
+
+  // Departments
+  departamentos: string | null
+
+  // Normalized fields
+  nome_normalizado: string | null
+  categoria_normalizado: string | null
 }
 
 // Client lookup maps type for reuse
